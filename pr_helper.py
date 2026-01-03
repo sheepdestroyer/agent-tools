@@ -90,12 +90,14 @@ def filter_feedback_since(feedback, since_iso):
     return new_items, counts
 
 def cmd_trigger(args):
-    """Triggers reviews from Gemini and CodeRabbit."""
+    """Triggers reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis."""
     print(f"Triggering reviews for PR #{args.pr_number}...", file=sys.stderr)
     try:
         subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/gemini review"], check=True)
         subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@coderabbitai review"], check=True)
         subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@sourcery-ai review"], check=True)
+        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/review"], check=True)
+        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@ellipsis review this"], check=True)
         print("Reviews triggered successfully.", file=sys.stderr)
     except subprocess.CalledProcessError as e:
         print(f"Error triggering reviews: {e}", file=sys.stderr)

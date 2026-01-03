@@ -30,6 +30,8 @@ A Review Cycle is a **LOOP**, not a check.
 *   **Gemini Code Assist**: Use `/gemini review` for general code review.
 *   **CodeRabbit**: Use `@coderabbitai review` for deep static analysis and logical bugs.
 *   **Sourcery**: Use `@sourcery-ai review` for Pythonic refactoring suggestions.
+*   **Qodo**: Use `/review` for qodo-code-review.
+*   **Ellipsis**: Use `@ellipsis review this` for ellipsis-dev reviews.
 *   **Respect**: Address all actionable feedback. If a bot suggests a fix that is wrong, explain why in a comment or ignore it if trivial, but prefer to address it if possible.
 
 ## 7. CLI Pagination

@@ -11,7 +11,7 @@ python3 agent-tools/pr_helper.py [command] [args]
 ### Commands
 
 #### 1. `trigger`
-Posts the required comments to trigger AI reviews from Gemini and CodeRabbit.
+Posts the required comments to trigger AI reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis.
 ```bash
 python3 agent-tools/pr_helper.py trigger {PR_NUMBER}
 ```

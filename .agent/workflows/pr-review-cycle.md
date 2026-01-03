@@ -1,5 +1,5 @@
 ---
-description: Official workflow for managing PR Review Cycles with AI bots (Gemini, CodeRabbit, Sourcery).
+description: Official workflow for managing PR Review Cycles with AI bots (Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis).
 ---
 
 1.  **Preparation & Verification**
@@ -15,6 +15,8 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
     # gh pr comment {PR_NUMBER} --body="/gemini review"
     # gh pr comment {PR_NUMBER} --body="@coderabbitai review"
     # gh pr comment {PR_NUMBER} --body="@sourcery-ai review"
+    # gh pr comment {PR_NUMBER} --body="/review"
+    # gh pr comment {PR_NUMBER} --body="@ellipsis review this"
     ```
 
 3.  **Monitor & Poll**
