@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.env
+env/
+venv/
+.venv/
+
+# IDE / OS specific
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Logs and Artifacts
+*.log
+pytest_*.txt
+*.png
+verification/
+final_test_out.txt
+tests/artifacts/
+
+# Agent Workspace for clean repro
+agent-workspace/
+
+# Agent Rules & Workflows
+!.agent/
+!.agent/**
+
+# Git and shell artifacts
+git_*.txt
+listing.txt
+*_ts.txt
