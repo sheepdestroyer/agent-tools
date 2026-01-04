@@ -56,4 +56,4 @@ A Review Cycle is a **LOOP**, not a check.
 ## 11. Critical Prohibitions
 **ABSOLUTE RULE**: Agents must **NEVER** merge a PR, close a PR, or delete a PR's branch.
 *   **Reason**: Merging, closing, and branch deletion are privileged actions reserved for human maintainers or specific CI/CD pipelines.
-*   **Action**: If you believe a PR is ready to be merged or should be closed, you must notify the user and await instructions. Do NOT execute commands to merge, close, or delete the branch.
+*   **Action**: If you believe a PR is ready to be merged or should be closed, you must notify the user and await instructions. **Do NOT** execute commands to merge, close, or delete the branch.
