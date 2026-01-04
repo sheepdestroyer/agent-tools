@@ -41,4 +41,4 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
 > [!CAUTION]
 > **No Browser Usage**: Do **NOT** use browser tools (subagents, page reading) to interact with GitHub or monitor the PR. Use the `gh` CLI or MCP GitHub tools exclusively. Using the browser for GitHub is prohibited as it is inefficient and prone to error.
 > [!DANGER]
-> **Forbidden Actions**: Agents must **NEVER** merge a PR, close a PR, or delete a PR's branch. These actions are strictly reserved for the user. When the cycle is complete, simply inform the user.
+> **Forbidden Actions**: Agents must **NEVER** merge a PR, close a PR, or delete a PR's branch. These actions are reserved for human maintainers or specific CI/CD pipelines. When the cycle is complete, inform the user and await further instructions.
