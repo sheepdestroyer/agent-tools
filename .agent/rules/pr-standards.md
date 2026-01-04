@@ -3,7 +3,7 @@
 ## 1. The Loop Rule
 A Review Cycle is a **LOOP**, not a check.
 *   **Definition**: A cycle is `Push -> Trigger -> Poll -> Analyze -> Fix -> REPEAT`.
-*   **Exit Condition**: You may ONLY exit the loop when the reviewer explicitly states "Ready to Merge" or "No issues found".
+*   **Exit Condition**: You may ONLY exit the loop when the reviewer explicitly states "Ready to Merge", "No issues found", or if the very latest gemini-code-assist bot comment states it is currently rate limited (ignoring previous, expired warnings).
 *   **Prohibition**: Never stop after fixing issues without re-verifying with the bot.
 
 ## 2. Push Before Trigger
