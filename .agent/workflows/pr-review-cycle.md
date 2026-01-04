@@ -39,6 +39,6 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
 > **Timezones**: Always use **UTC** (Coordinated Universal Time) for all timestamps when interacting with the GitHub API. Ensure your datetime objects are timezone-aware (e.g., `tzinfo=timezone.utc`). Comparing naive (local) vs aware (API) datetimes causes crashes.
 
 > [!CAUTION]
-> **No Browser Usage**: Do **NOT** use browser tools (subagents, page reading) to interact with GitHub or monitor the PR. Use MCP `pull_request_read` or `gh` CLI tools exclusively. Using the browser for GitHub is prohibited as it is inefficient and prone to error.
+> **No Browser Usage**: Do **NOT** use browser tools (subagents, page reading) to interact with GitHub or monitor the PR. Use GitHub MCP tools or `gh` CLI tools exclusively. Using the browser for GitHub is prohibited as it is inefficient and prone to error.
 > [!DANGER]
 > **Forbidden Actions**: Agents must **NEVER** merge a PR, close a PR, or delete a PR's branch. These actions are reserved for human maintainers or specific CI/CD pipelines. When the cycle is complete, inform the user and await further instructions.
