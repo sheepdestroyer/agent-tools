@@ -1,5 +1,3 @@
-# Antigravity Project Knowledge: whoistel
-
 ## PR Review Cycle Autonomy
 
 ### Git Push & Authentication
