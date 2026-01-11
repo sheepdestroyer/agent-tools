@@ -51,7 +51,7 @@ A Review Cycle is a **LOOP**, not a check.
 ## 10. Direct Tool Usage Only
 **PROHIBITION**: You must **NEVER** use browser tools (including `browser_subagent`) to check Pull Request status, review comments, or checks on GitHub. 
 *   **Reason**: Browser tools are inefficient and inconsistent for structured data extraction compared to the GitHub MCP server and the `gh` CLI.
-*   **Mandate**: Use GitHub MCP tools or `gh` CLI tools for all GitHub interactions.
+*   **Mandate**: Use `agent-tools/pr_helper.py`, GitHub MCP tools, or `gh` CLI tool for all GitHub interactions.
 
 ## 11. Critical Prohibitions
 **ABSOLUTE RULE**: Agents must **NEVER** merge a PR, close a PR, or delete a PR's branch.
