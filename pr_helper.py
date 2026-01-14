@@ -27,7 +27,11 @@ def get_current_repo_context():
             data = json.loads(result.stdout)
             return (data.get("owner") or {}).get("login"), data.get("name")
         elif result.stderr:
-             print(f"Warning: 'gh repo view' failed: {result.stderr.strip()}", file=sys.stderr)
+            print(f"Warning: 'gh repo view' failed: {result.stderr.strip()}", file=sys.stderr)
+    except FileNotFoundError:
+        print("Warning: GitHub CLI 'gh' not found. Please install it to use auto-detection.", file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("Warning: 'gh repo view' timed out.", file=sys.stderr)
     except (subprocess.SubprocessError, json.JSONDecodeError) as e:
         print(f"Warning: Could not auto-detect repository context: {e}", file=sys.stderr)
     except Exception as e:
@@ -256,23 +260,20 @@ def main():
     args = parser.parse_args()
 
     # Resolution Logic: Args -> Env Vars -> Auto-detection
-    if not args.owner:
-        args.owner = os.environ.get("GH_OWNER")
-    if not args.repo:
-        args.repo = os.environ.get("GH_REPO")
+    owner = args.owner or os.environ.get("GH_OWNER")
+    repo = args.repo or os.environ.get("GH_REPO")
 
-    if not args.owner or not args.repo:
+    if not owner or not repo:
         detected_owner, detected_repo = get_current_repo_context()
-        if not args.owner:
-            args.owner = detected_owner
-        if not args.repo:
-            args.repo = detected_repo
+        owner = owner or detected_owner
+        repo = repo or detected_repo
+
+    args.owner = owner
+    args.repo = repo
 
     if not args.owner or not args.repo:
-        parser.print_help()
-        print("\nError: Could not detect repository context and no --owner/--repo provided.", file=sys.stderr)
-        print("Please run from within a git repository or set GH_OWNER/GH_REPO environment variables.", file=sys.stderr)
-        sys.exit(1)
+        parser.error("Could not detect repository context and no --owner/--repo provided.\n"
+                     "       Please run from within a git repository or set GH_OWNER/GH_REPO environment variables.")
 
     if args.command == 'trigger':
         cmd_trigger(args)
