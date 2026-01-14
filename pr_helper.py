@@ -13,8 +13,30 @@ from datetime import datetime, timezone
 import re
 
 # Centralized constants
-DEFAULT_OWNER = os.environ.get("GH_OWNER", "sheepdestroyer")
-DEFAULT_REPO = os.environ.get("GH_REPO", "whoistel")
+def get_current_repo_context():
+    """Attempts to detect the current repository owner and name using gh CLI."""
+    try:
+        result = subprocess.run(
+            ["gh", "repo", "view", "--json", "owner,name"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            owner = (data.get("owner") or {}).get("login")
+            return owner, data.get("name")
+        else:
+            err_msg = result.stderr.strip() if result.stderr else f"Exit code {result.returncode}"
+            print(f"Warning: 'gh repo view' failed: {err_msg}", file=sys.stderr)
+    except FileNotFoundError:
+        print("Warning: GitHub CLI 'gh' not found. Please install it to use auto-detection.", file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("Warning: 'gh repo view' timed out.", file=sys.stderr)
+    except (subprocess.SubprocessError, json.JSONDecodeError) as e:
+        print(f"Warning: Could not auto-detect repository context: {e}", file=sys.stderr)
+    return None, None
 
 def run_gh_api(path, paginate=True):
     """Executes a GitHub API call using the gh CLI and returns the JSON response."""
@@ -31,7 +53,7 @@ def run_gh_api(path, paginate=True):
         print(f"Error decoding JSON from GitHub API at {path}", file=sys.stderr)
         return []
 
-def get_all_feedback(pr_number, owner=DEFAULT_OWNER, repo=DEFAULT_REPO):
+def get_all_feedback(pr_number, owner, repo):
     """Fetches Reviews, Inline Comments, and Issue Comments from GitHub."""
     base_path = f"repos/{owner}/{repo}"
     reviews = run_gh_api(f"{base_path}/pulls/{pr_number}/reviews")
@@ -92,12 +114,21 @@ def filter_feedback_since(feedback, since_iso):
 def cmd_trigger(args):
     """Triggers reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis."""
     print(f"Triggering reviews for PR #{args.pr_number}...", file=sys.stderr)
+    repo_flag = ["-R", f"{args.owner}/{args.repo}"]
+    review_bodies = [
+        "/gemini review",
+        "@coderabbitai review",
+        "@sourcery-ai review",
+        "/review",
+        "@ellipsis review this"
+    ]
+    
     try:
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/gemini review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@coderabbitai review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@sourcery-ai review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@ellipsis review this"], check=True)
+        for body in review_bodies:
+            subprocess.run(
+                ["gh", "pr", "comment"] + repo_flag + [str(args.pr_number), "--body", body],
+                check=True
+            )
         print("Reviews triggered successfully.", file=sys.stderr)
     except subprocess.CalledProcessError as e:
         print(f"Error triggering reviews: {e}", file=sys.stderr)
@@ -208,8 +239,8 @@ def cmd_verify(args):
 def main():
     """Main entry point for pr_helper.py CLI."""
     parser = argparse.ArgumentParser(description='Unified PR Review Cycle Helper')
-    parser.add_argument('--owner', default=DEFAULT_OWNER, help='GitHub repository owner')
-    parser.add_argument('--repo', default=DEFAULT_REPO, help='GitHub repository name')
+    parser.add_argument('--owner', help='GitHub repository owner')
+    parser.add_argument('--repo', help='GitHub repository name')
     subparsers = parser.add_subparsers(dest='command', help='Sub-commands')
 
     # Trigger
@@ -236,6 +267,29 @@ def main():
     p_verify.add_argument('file', help='JSON file containing comments (from fetch/monitor)')
 
     args = parser.parse_args()
+
+    if args.command is None:
+        parser.print_help()
+        sys.exit(1)
+
+    # Resolution Logic: Args -> Env Vars -> Auto-detection
+    owner = args.owner or os.environ.get("GH_OWNER")
+    repo = args.repo or os.environ.get("GH_REPO")
+
+    # If gaps, try auto-detection to fill them (mixed context allowed for forks)
+    if not owner or not repo:
+        detected_owner, detected_repo = get_current_repo_context()
+        owner = owner or detected_owner
+        repo = repo or detected_repo
+
+    args.owner = owner
+    args.repo = repo
+
+    if not args.owner or not args.repo:
+        parser.error(
+            "Could not detect repository context and no --owner/--repo provided. "
+            "Please run from within a git repository or set GH_OWNER/GH_REPO environment variables."
+        )
 
     if args.command == 'trigger':
         cmd_trigger(args)
