@@ -25,11 +25,11 @@ def get_current_repo_context():
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            owner_data = data.get("owner")
-            owner = owner_data.get("login") if isinstance(owner_data, dict) else None
+            owner = (data.get("owner") or {}).get("login")
             return owner, data.get("name")
-        elif result.stderr:
-            print(f"Warning: 'gh repo view' failed: {result.stderr.strip()}", file=sys.stderr)
+        else:
+            err_msg = result.stderr.strip() if result.stderr else f"Exit code {result.returncode}"
+            print(f"Warning: 'gh repo view' failed: {err_msg}", file=sys.stderr)
     except FileNotFoundError:
         print("Warning: GitHub CLI 'gh' not found. Please install it to use auto-detection.", file=sys.stderr)
     except subprocess.TimeoutExpired:
@@ -115,12 +115,19 @@ def cmd_trigger(args):
     """Triggers reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis."""
     print(f"Triggering reviews for PR #{args.pr_number}...", file=sys.stderr)
     repo_flag = ["-R", f"{args.owner}/{args.repo}"]
+    review_bodies = [
+        "/gemini review",
+        "@coderabbitai review",
+        "@sourcery-ai review",
+        "/review",
+        "@ellipsis review this"
+    ]
     try:
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/gemini review"] + repo_flag, check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@coderabbitai review"] + repo_flag, check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@sourcery-ai review"] + repo_flag, check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/review"] + repo_flag, check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@ellipsis review this"] + repo_flag, check=True)
+        for body in review_bodies:
+            subprocess.run(
+                ["gh", "pr", "comment", str(args.pr_number), "--body", body] + repo_flag,
+                check=True
+            )
         print("Reviews triggered successfully.", file=sys.stderr)
     except subprocess.CalledProcessError as e:
         print(f"Error triggering reviews: {e}", file=sys.stderr)
@@ -273,8 +280,10 @@ def main():
     args.repo = repo
 
     if not args.owner or not args.repo:
-        parser.error("Could not detect repository context and no --owner/--repo provided.\n"
-                     "       Please run from within a git repository or set GH_OWNER/GH_REPO environment variables.")
+        parser.error(
+            "Could not detect repository context and no --owner/--repo provided. "
+            "Please run from within a git repository or set GH_OWNER/GH_REPO environment variables."
+        )
 
     if args.command == 'trigger':
         cmd_trigger(args)
