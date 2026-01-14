@@ -20,18 +20,19 @@ def get_current_repo_context():
             ["gh", "repo", "view", "--json", "owner,name"],
             capture_output=True,
             text=True,
-            check=False
+            check=False,
+            timeout=5
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            return data.get("owner", {}).get("login"), data.get("name")
-    except Exception:
-        pass
+            return (data.get("owner") or {}).get("login"), data.get("name")
+        elif result.stderr:
+             print(f"Warning: 'gh repo view' failed: {result.stderr.strip()}", file=sys.stderr)
+    except (subprocess.SubprocessError, json.JSONDecodeError) as e:
+        print(f"Warning: Could not auto-detect repository context: {e}", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: Unexpected error during repo detection: {e}", file=sys.stderr)
     return None, None
-
-_detected_owner, _detected_repo = get_current_repo_context()
-DEFAULT_OWNER = os.environ.get("GH_OWNER", _detected_owner)
-DEFAULT_REPO = os.environ.get("GH_REPO", _detected_repo)
 
 def run_gh_api(path, paginate=True):
     """Executes a GitHub API call using the gh CLI and returns the JSON response."""
@@ -48,7 +49,7 @@ def run_gh_api(path, paginate=True):
         print(f"Error decoding JSON from GitHub API at {path}", file=sys.stderr)
         return []
 
-def get_all_feedback(pr_number, owner=DEFAULT_OWNER, repo=DEFAULT_REPO):
+def get_all_feedback(pr_number, owner, repo):
     """Fetches Reviews, Inline Comments, and Issue Comments from GitHub."""
     base_path = f"repos/{owner}/{repo}"
     reviews = run_gh_api(f"{base_path}/pulls/{pr_number}/reviews")
@@ -225,8 +226,8 @@ def cmd_verify(args):
 def main():
     """Main entry point for pr_helper.py CLI."""
     parser = argparse.ArgumentParser(description='Unified PR Review Cycle Helper')
-    parser.add_argument('--owner', default=DEFAULT_OWNER, help='GitHub repository owner')
-    parser.add_argument('--repo', default=DEFAULT_REPO, help='GitHub repository name')
+    parser.add_argument('--owner', help='GitHub repository owner')
+    parser.add_argument('--repo', help='GitHub repository name')
     subparsers = parser.add_subparsers(dest='command', help='Sub-commands')
 
     # Trigger
@@ -253,6 +254,19 @@ def main():
     p_verify.add_argument('file', help='JSON file containing comments (from fetch/monitor)')
 
     args = parser.parse_args()
+
+    # Resolution Logic: Args -> Env Vars -> Auto-detection
+    if not args.owner:
+        args.owner = os.environ.get("GH_OWNER")
+    if not args.repo:
+        args.repo = os.environ.get("GH_REPO")
+
+    if not args.owner or not args.repo:
+        detected_owner, detected_repo = get_current_repo_context()
+        if not args.owner:
+            args.owner = detected_owner
+        if not args.repo:
+            args.repo = detected_repo
 
     if not args.owner or not args.repo:
         parser.print_help()
