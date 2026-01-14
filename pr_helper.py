@@ -25,7 +25,7 @@ def get_current_repo_context():
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            owner = (data.get("owner") or {}).get("login")
+            owner = data.get("owner", {}).get("login")
             return owner, data.get("name")
         else:
             err_msg = result.stderr.strip() if result.stderr else f"Exit code {result.returncode}"
@@ -112,25 +112,47 @@ def filter_feedback_since(feedback, since_iso):
     return new_items, counts
 
 def cmd_trigger(args):
+
     """Triggers reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis."""
+
     print(f"Triggering reviews for PR #{args.pr_number}...", file=sys.stderr)
+
     repo_flag = ["-R", f"{args.owner}/{args.repo}"]
+
     review_bodies = [
+
         "/gemini review",
+
         "@coderabbitai review",
+
         "@sourcery-ai review",
+
         "/review",
+
         "@ellipsis review this"
+
     ]
+
+    
+
     try:
+
         for body in review_bodies:
+
             subprocess.run(
-                ["gh", "pr", "comment", str(args.pr_number), "--body", body] + repo_flag,
+
+                ["gh", "pr", "comment"] + repo_flag + [str(args.pr_number), "--body", body],
+
                 check=True
+
             )
+
         print("Reviews triggered successfully.", file=sys.stderr)
+
     except subprocess.CalledProcessError as e:
+
         print(f"Error triggering reviews: {e}", file=sys.stderr)
+
         sys.exit(1)
 
 def cmd_fetch(args):
@@ -271,11 +293,11 @@ def main():
     owner = args.owner or os.environ.get("GH_OWNER")
     repo = args.repo or os.environ.get("GH_REPO")
 
-    # Only use auto-detection if both owner and repo are missing from args/env.
-    if not owner and not repo:
+    # If gaps, try auto-detection to fill them (mixed context allowed for forks)
+    if not owner or not repo:
         detected_owner, detected_repo = get_current_repo_context()
-        owner = detected_owner
-        repo = detected_repo
+        owner = owner or detected_owner
+        repo = repo or detected_repo
 
     args.owner = owner
     args.repo = repo
