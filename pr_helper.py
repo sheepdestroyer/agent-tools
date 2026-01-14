@@ -25,7 +25,9 @@ def get_current_repo_context():
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            return (data.get("owner") or {}).get("login"), data.get("name")
+            owner_data = data.get("owner")
+            owner = owner_data.get("login") if isinstance(owner_data, dict) else None
+            return owner, data.get("name")
         elif result.stderr:
             print(f"Warning: 'gh repo view' failed: {result.stderr.strip()}", file=sys.stderr)
     except FileNotFoundError:
@@ -34,8 +36,6 @@ def get_current_repo_context():
         print("Warning: 'gh repo view' timed out.", file=sys.stderr)
     except (subprocess.SubprocessError, json.JSONDecodeError) as e:
         print(f"Warning: Could not auto-detect repository context: {e}", file=sys.stderr)
-    except Exception as e:
-        print(f"Warning: Unexpected error during repo detection: {e}", file=sys.stderr)
     return None, None
 
 def run_gh_api(path, paginate=True):
@@ -114,12 +114,13 @@ def filter_feedback_since(feedback, since_iso):
 def cmd_trigger(args):
     """Triggers reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis."""
     print(f"Triggering reviews for PR #{args.pr_number}...", file=sys.stderr)
+    repo_flag = ["-R", f"{args.owner}/{args.repo}"]
     try:
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/gemini review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@coderabbitai review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@sourcery-ai review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/review"], check=True)
-        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@ellipsis review this"], check=True)
+        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/gemini review"] + repo_flag, check=True)
+        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@coderabbitai review"] + repo_flag, check=True)
+        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@sourcery-ai review"] + repo_flag, check=True)
+        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "/review"] + repo_flag, check=True)
+        subprocess.run(["gh", "pr", "comment", str(args.pr_number), "--body", "@ellipsis review this"] + repo_flag, check=True)
         print("Reviews triggered successfully.", file=sys.stderr)
     except subprocess.CalledProcessError as e:
         print(f"Error triggering reviews: {e}", file=sys.stderr)
