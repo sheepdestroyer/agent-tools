@@ -25,7 +25,7 @@ def get_current_repo_context():
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            owner = data.get("owner", {}).get("login")
+            owner = (data.get("owner") or {}).get("login")
             return owner, data.get("name")
         else:
             err_msg = result.stderr.strip() if result.stderr else f"Exit code {result.returncode}"
@@ -267,6 +267,10 @@ def main():
     p_verify.add_argument('file', help='JSON file containing comments (from fetch/monitor)')
 
     args = parser.parse_args()
+
+    if args.command is None:
+        parser.print_help()
+        sys.exit(1)
 
     # Resolution Logic: Args -> Env Vars -> Auto-detection
     owner = args.owner or os.environ.get("GH_OWNER")
