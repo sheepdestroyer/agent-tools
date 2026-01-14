@@ -271,10 +271,11 @@ def main():
     owner = args.owner or os.environ.get("GH_OWNER")
     repo = args.repo or os.environ.get("GH_REPO")
 
-    if not owner or not repo:
+    # Only use auto-detection if both owner and repo are missing from args/env.
+    if not owner and not repo:
         detected_owner, detected_repo = get_current_repo_context()
-        owner = owner or detected_owner
-        repo = repo or detected_repo
+        owner = detected_owner
+        repo = detected_repo
 
     args.owner = owner
     args.repo = repo
