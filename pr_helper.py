@@ -13,8 +13,25 @@ from datetime import datetime, timezone
 import re
 
 # Centralized constants
-DEFAULT_OWNER = os.environ.get("GH_OWNER", "sheepdestroyer")
-DEFAULT_REPO = os.environ.get("GH_REPO", "whoistel")
+def get_current_repo_context():
+    """Attempts to detect the current repository owner and name using gh CLI."""
+    try:
+        result = subprocess.run(
+            ["gh", "repo", "view", "--json", "owner,name"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            return data.get("owner", {}).get("login"), data.get("name")
+    except Exception:
+        pass
+    return None, None
+
+_detected_owner, _detected_repo = get_current_repo_context()
+DEFAULT_OWNER = os.environ.get("GH_OWNER", _detected_owner)
+DEFAULT_REPO = os.environ.get("GH_REPO", _detected_repo)
 
 def run_gh_api(path, paginate=True):
     """Executes a GitHub API call using the gh CLI and returns the JSON response."""
@@ -236,6 +253,12 @@ def main():
     p_verify.add_argument('file', help='JSON file containing comments (from fetch/monitor)')
 
     args = parser.parse_args()
+
+    if not args.owner or not args.repo:
+        parser.print_help()
+        print("\nError: Could not detect repository context and no --owner/--repo provided.", file=sys.stderr)
+        print("Please run from within a git repository or set GH_OWNER/GH_REPO environment variables.", file=sys.stderr)
+        sys.exit(1)
 
     if args.command == 'trigger':
         cmd_trigger(args)
