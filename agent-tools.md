@@ -46,7 +46,7 @@ python3 agent-tools/pr_helper.py verify {RESULT_FILE}
 ## Workflow Integration
 
 This tool is designed to support **The Loop Rule** documented in `AGENTS.md`. 
-1. **Verify**: Run all test suites (capturing output in `tests/artifacts/` per standards). *All test suites must pass before pushing changes.*
+1. **Test**: Run all test suites (capturing output in `tests/artifacts/` per [standards](./.agent/rules/pr-standards.md#3-artifact-hygiene)). *All test suites must pass before pushing changes.*
 2. `push` changes.
 3. `trigger` reviews.
 4. `monitor` for feedback.
