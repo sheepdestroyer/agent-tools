@@ -112,47 +112,26 @@ def filter_feedback_since(feedback, since_iso):
     return new_items, counts
 
 def cmd_trigger(args):
-
     """Triggers reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis."""
-
     print(f"Triggering reviews for PR #{args.pr_number}...", file=sys.stderr)
-
     repo_flag = ["-R", f"{args.owner}/{args.repo}"]
-
     review_bodies = [
-
         "/gemini review",
-
         "@coderabbitai review",
-
         "@sourcery-ai review",
-
         "/review",
-
         "@ellipsis review this"
-
     ]
-
     
-
     try:
-
         for body in review_bodies:
-
             subprocess.run(
-
                 ["gh", "pr", "comment"] + repo_flag + [str(args.pr_number), "--body", body],
-
                 check=True
-
             )
-
         print("Reviews triggered successfully.", file=sys.stderr)
-
     except subprocess.CalledProcessError as e:
-
         print(f"Error triggering reviews: {e}", file=sys.stderr)
-
         sys.exit(1)
 
 def cmd_fetch(args):
