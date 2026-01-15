@@ -8,6 +8,7 @@ A Review Cycle is a **LOOP**, not a check.
 
 ## 2. Push Before Trigger
 **STRICT RULE**: You MUST `git push` your changes BEFORE triggering a review.
+*   **Mandatory Testing**: All test suites must pass before pushing changes.
 *   Triggering a review on unpushed code results in outdated feedback and wastes API rate limits.
 *   Always verify `git status` is clean and `git log` shows your commit before running `gh pr comment`.
 
@@ -18,7 +19,7 @@ A Review Cycle is a **LOOP**, not a check.
 
 ## 4. Polling & Wait Times
 *   **Initial Wait**: Wait **at least 3 minutes** after requesting a review to allow bots to process.
-*   **Poll Interval**: Check for feedback every **2 minutes`.
+*   **Poll Interval**: Check for feedback every **2 minutes**.
 *   **Timeout**: Set a reasonable timeout (e.g., 15-25 minutes) to avoid infinite loops, but do not give up early.
 
 ## 5. Tool Usage
