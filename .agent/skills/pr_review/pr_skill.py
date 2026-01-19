@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""
+Robust PR Review Skill using PyGithub.
+Enforces "Push Before Trigger" and "The Loop" programmatically.
+"""
+import sys
+import os
+import json
+import subprocess
+import argparse
+from datetime import datetime, timezone
+from github import Github, GithubException
+
+# Constants for Review Bots
+REVIEW_COMMANDS = [
+    "/gemini review",
+    "@coderabbitai review",
+    "@sourcery-ai review",
+    "/review",  # Qodo
+    "@ellipsis review this"
+]
+
+class ReviewManager:
+    def __init__(self):
+        # Authenticate with GitHub
+        self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        if not self.token:
+            # Fallback to gh CLI for auth token if env var is missing
+            try:
+                res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True)
+                self.token = res.stdout.strip()
+            except subprocess.CalledProcessError:
+                print("Error: No GITHUB_TOKEN found and 'gh auth token' failed.", file=sys.stderr)
+                sys.exit(1)
+        
+        self.g = Github(self.token)
+        self.repo = self._detect_repo()
+
+    def _detect_repo(self):
+        """Auto-detects current repository from git remote."""
+        try:
+            # Get remote URL
+            res = subprocess.run(
+                ["gh", "repo", "view", "--json", "owner,name"],
+                capture_output=True, text=True, check=True
+            )
+            data = json.loads(res.stdout)
+            full_name = f"{data['owner']['login']}/{data['name']}"
+            return self.g.get_repo(full_name)
+        except Exception as e:
+            print(f"Error checking repository context: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def _check_local_state(self):
+        """
+        Enforces:
+        1. Clean git status (no uncommitted changes)
+        2. Local branch is pushed (no diff with upstream)
+        """
+        # 1. Check for uncommitted changes
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+        if status.stdout.strip():
+            return False, "Uncommitted changes detected. Please commit or stash them first."
+
+        # 2. Check if pushed to upstream
+        # Get current branch
+        branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+        
+        # Check if upstream is configured
+        upstream = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True).stdout.strip()
+        if not upstream:
+             return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
+        
+        # Check for unpushed commits
+        # git diff --quiet @{u} returns 0 if no diff, 1 if diff.
+        diff = subprocess.run(["git", "diff", "--quiet", "@{u}"], capture_output=True)
+        if diff.returncode != 0:
+            return False, f"Local branch '{branch}' has unpushed changes. You MUST push before triggering a review."
+            
+        return True, "Code is clean and pushed."
+
+    def safe_push(self):
+        """Attempts to push changes safely, aborting if pull is needed."""
+        print("Runnning safe push verification...", file=sys.stderr)
+        
+        # Check git status first
+        clean, msg = self._check_local_state()
+        if "Uncommitted" in msg:
+             print(f"Error: {msg}", file=sys.stderr)
+             return False
+
+        # Attempt push
+        try:
+            subprocess.run(["git", "push"], check=True)
+            print("Push successful.", file=sys.stderr)
+            return True
+        except subprocess.CalledProcessError:
+            print("Error: Push failed. You may need to pull changes first.", file=sys.stderr)
+            return False
+
+    def trigger_review(self, pr_number):
+        """
+        1. Checks local state (Hard Constraint).
+        2. Post comments to trigger bots.
+        """
+        # Step 1: Enforce Push
+        is_safe, msg = self._check_local_state()
+        if not is_safe:
+            print(f"FAILED: {msg}", file=sys.stderr)
+            print("Tip: Use the 'safe_push' tool or run 'git push' manually.", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"State verified: {msg}", file=sys.stderr)
+
+        # Step 2: Trigger Bots
+        try:
+            pr = self.repo.get_pull(pr_number)
+            print(f"Triggering reviews on PR #{pr_number} ({pr.title})...", file=sys.stderr)
+            
+            # Post one comment with all commands? Or separate? 
+            # Separate is safer for parsing by bots.
+            for cmd in REVIEW_COMMANDS:
+                pr.create_issue_comment(cmd)
+                print(f"  Posted: {cmd}", file=sys.stderr)
+                
+            print("All review bots triggered successfully.", file=sys.stderr)
+            print("Please wait 2-3 minutes before checking status.", file=sys.stderr)
+
+        except GithubException as e:
+            print(f"GitHub API Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    def check_status(self, pr_number, since_iso=None):
+        """
+        Stateless check of PR feedback using PyGithub.
+        Returns JSON summary of status.
+        """
+        try:
+            pr = self.repo.get_pull(pr_number)
+            
+            since_dt = datetime.min.replace(tzinfo=timezone.utc)
+            if since_iso:
+                try:
+                    if since_iso.endswith('Z'):
+                        since_iso = since_iso[:-1] + '+00:00'
+                    since_dt = datetime.fromisoformat(since_iso)
+                    if since_dt.tzinfo is None:
+                        since_dt = since_dt.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    print(f"Warning: Invalid timestamp {since_iso}, ignoring.", file=sys.stderr)
+
+            # Fetch comments (paginated by PyGithub automatically)
+            new_feedback = []
+            
+            # 1. Issue Comments (General)
+            for comment in pr.get_issue_comments():
+                if comment.created_at.replace(tzinfo=timezone.utc) > since_dt:
+                    new_feedback.append({
+                        "type": "issue_comment",
+                        "user": comment.user.login,
+                        "body": comment.body,
+                        "url": comment.html_url,
+                        "created_at": comment.created_at.isoformat()
+                    })
+
+            # 2. Review Comments (Inline)
+            for comment in pr.get_review_comments():
+                if comment.created_at.replace(tzinfo=timezone.utc) > since_dt:
+                    new_feedback.append({
+                        "type": "inline_comment",
+                        "user": comment.user.login,
+                        "body": comment.body,
+                        "path": comment.path,
+                        "line": comment.line,
+                        "created_at": comment.created_at.isoformat()
+                    })
+
+            # 3. Reviews (Approvals/changes requested)
+            for review in pr.get_reviews():
+                if review.submitted_at.replace(tzinfo=timezone.utc) > since_dt:
+                     new_feedback.append({
+                        "type": "review_summary",
+                        "user": review.user.login,
+                        "state": review.state,
+                        "body": review.body,
+                        "created_at": review.submitted_at.isoformat()
+                    })
+            
+            # Return JSON
+            output = {
+                "pr_number": pr_number,
+                "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+                "new_item_count": len(new_feedback),
+                "items": new_feedback
+            }
+            print(json.dumps(output, indent=2))
+
+        except GithubException as e:
+            print(f"GitHub API Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+def main():
+    parser = argparse.ArgumentParser(description="PR Skill Agent Tool")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Trigger
+    p_trigger = subparsers.add_parser("trigger", help="Trigger reviews safely")
+    p_trigger.add_argument("pr_number", type=int)
+
+    # Status
+    p_status = subparsers.add_parser("status", help="Check review status")
+    p_status.add_argument("pr_number", type=int)
+    p_status.add_argument("--since", help="ISO 8601 timestamp")
+
+    # Safe Push
+    p_push = subparsers.add_parser("safe_push", help="Push changes safely")
+
+    args = parser.parse_args()
+    mgr = ReviewManager()
+
+    if args.command == "trigger":
+        mgr.trigger_review(args.pr_number)
+    elif args.command == "status":
+        mgr.check_status(args.pr_number, args.since)
+    elif args.command == "safe_push":
+        success = mgr.safe_push()
+        if not success:
+            sys.exit(1)
+
+if __name__ == "__main__":
+    main()
