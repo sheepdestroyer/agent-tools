@@ -43,23 +43,6 @@ Checks for new feedback on a PR since a given timestamp.
 python3 .agent/skills/pr_review/pr_skill.py status <PR_NUMBER> --since <ISO_TIMESTAMP>
 ```
 
-### `wait`
-
-Blocks and waits for new feedback (comments or reviews) on a PR.
-*   **Parameters**:
-    *   `pr_number` (integer)
-    *   `--timeout` (integer, default: 15): Timeout in minutes.
-    *   `--interval` (integer, default: 60): Poll interval in seconds.
-*   **Behavior**:
-    *   Polls the PR every `interval` seconds.
-    *   Returns status JSON immediately when a new comment or review is detected.
-    *   Exits with error if timeout is reached.
-*   **Usage**: Use this command to autonomously wait for bot feedback instead of exiting to the user.
-
-```bash
-python3 .agent/skills/pr_review/pr_skill.py wait <PR_NUMBER>
-```
-
 ## Usage Example
 
 1. **Push Changes**:
@@ -76,3 +59,6 @@ python3 .agent/skills/pr_review/pr_skill.py wait <PR_NUMBER>
    ```bash
    python3 .agent/skills/pr_review/pr_skill.py status 123 --since 2024-01-01T12:00:00Z
    ```
+
+> [!TIP]
+> For reliable, non-blocking status polling, use **GitHub MCP tools** (`mcp_github_pull_request_read`) instead of the script.

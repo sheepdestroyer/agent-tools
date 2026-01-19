@@ -45,15 +45,15 @@ A Review Cycle is a **LOOP**, not a check.
 *   **Filtering**: When filtering comments by time (e.g., `--since`), provide the timestamp in ISO 8601 UTC format (`YYYY-MM-DDTHH:MM:SSZ`) to ensure accurate retrieval.
 
 ## 9. Agent Autonomy
-*   **No Idling**: Agents must actively monitor polling scripts. Do NOT exit/notify the user just to wait for a bot or a long process.
-*   **Autonomous Looping**: Use `pr_skill wait <PR> --timeout 15` to block and wait for feedback efficiently. This allows the Agent to stay active and respond immediately to new feedback without user intervention.
+*   **No Idling**: Agents must actively monitor PR status. Do NOT exit/notify the user just to wait for a bot or a long process.
+*   **Polling Strategy**: Use GitHub MCP tools (`mcp_github_pull_request_read`) for reliable, non-blocking status polling. Wait ~3 minutes after triggering before first check, then poll every 2 minutes.
 *   **Autonomous Action**: Agents are AUTHORIZED and REQUIRED to `git commit` and `git push` fixes autonomously if tests pass. Do not ask the user to push for you.
-*   **Self-Correction**: If a tool fails (e.g., specific monitoring script), fallback to raw `gh` commands immediately.
+*   **Self-Correction**: If a tool fails (e.g., specific monitoring script), fallback to GitHub MCP or raw `gh` commands immediately.
 
 ## 10. Direct Tool Usage Only
 **PROHIBITION**: You must **NEVER** use browser tools (including `browser_subagent`) to check Pull Request status, review comments, or checks on GitHub. 
 *   **Reason**: Browser tools are inefficient and inconsistent for structured data extraction compared to the GitHub MCP server and the `gh` CLI.
-*   **Mandate**: Use `agent-tools/.agent/skills/pr_review/pr_skill.py`, GitHub MCP tools, or `gh` CLI tool for all GitHub interactions. 
+*   **Mandate**: Use `.agent/skills/pr_review/pr_skill.py`, GitHub MCP tools, or `gh` CLI tool for all GitHub interactions. 
 
 ## 11. Critical Prohibitions
 **ABSOLUTE RULE**: Agents must **NEVER** merge a PR, close a PR, or delete a PR's branch.

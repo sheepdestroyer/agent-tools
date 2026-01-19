@@ -15,15 +15,16 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
     python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}
     ```
 
-3.  **Wait for Feedback (Autonomous)**
-    *   Use the blocking `wait` command to poll for new feedback without exiting:
+3.  **Wait and Check Status**
+    *   Wait **3 minutes** for bots to process.
+    *   Use PR status check for quick verification:
     ```bash
-    python3 .agent/skills/pr_review/pr_skill.py wait {PR_NUMBER} --timeout 15
+    python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}
     ```
-    *   This command blocks until feedback is detected or timeout is reached.
+    *   Alternatively, use **GitHub MCP tools** (`mcp_github_pull_request_read`) for reliable, non-blocking status polling.
 
 4.  **Analyze & Implement**
-    *   Implement fixes for all valid issues.
+    *   Review feedback and implement fixes for all valid issues.
     *   **Loop**: Return to Step 1 until "Ready to Merge".
 
 ## Compliance
