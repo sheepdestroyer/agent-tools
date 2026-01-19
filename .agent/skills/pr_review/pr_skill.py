@@ -54,7 +54,7 @@ class ReviewManager:
             data = json.loads(res.stdout)
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
-        except Exception as e:
+        except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
             print(f"Error checking repository context: {e}", file=sys.stderr)
             sys.exit(1)
 
