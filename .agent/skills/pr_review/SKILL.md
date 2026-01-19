@@ -8,7 +8,11 @@ description: Robust PR review management skill enforcing "The Loop" and "Push Be
 A robust skill for managing the Pull Request review cycle with AI agents. This skill enforces best practices (like pushing before triggering) programmatically, adhering to the standards in `.agent/rules/pr-standards.md`.
 
 > [!CAUTION]
-> **The Loop Rule - CRITICAL**: You must **NEVER** call `notify_user` or exit to the user during a review cycle until a reviewer explicitly states "Ready to Merge" or "No issues found". Continue the loop autonomously: `Trigger → Wait 3min → Poll with MCP → Fix → Repeat`.
+> **The Loop Rule - CRITICAL**: 
+> 1. **NEVER** call `notify_user` or exit during a review cycle until "Ready to Merge".
+> 2. **ALWAYS** check existing feedback with `status` BEFORE triggering new reviews.
+> 3. Only trigger reviews after a fresh push, not repeatedly.
+> Loop: `Push → Status Check → Analyze → Fix → Repeat`.
 
 
 ## Tools

@@ -8,20 +8,21 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
     *   **MANDATORY**: *All test suites must pass before pushing changes.*
     *   **CRITICAL**: `git push` changes to the remote branch. *Never trigger a review on unpushed code.*
 
+2.  **Check Existing Status FIRST**
+    *   **ALWAYS** check for existing feedback before triggering new reviews:
+    ```bash
+    python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}
+    ```
+    *   If there are unaddressed issues, skip to Step 4 (Analyze & Implement).
+    *   Only proceed to Step 3 if no existing feedback or all feedback has been addressed.
+
 // turbo
-2.  **Trigger Reviews (Robust)**
+3.  **Trigger Reviews (Only When Needed)**
     *   Use the robust skill to trigger reviews (automatically checks for unpushed changes):
     ```bash
     python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}
     ```
-
-3.  **Wait and Check Status**
-    *   Wait **3 minutes** for bots to process.
-    *   Use PR status check for quick verification:
-    ```bash
-    python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}
-    ```
-    *   Alternatively, use **GitHub MCP tools** (`mcp_github_pull_request_read`) for reliable, non-blocking status polling.
+    *   Wait **3 minutes** for bots to process, then return to Step 2.
 
 4.  **Analyze & Implement**
     *   Review feedback and implement fixes for all valid issues.

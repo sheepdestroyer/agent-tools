@@ -143,6 +143,12 @@ class ReviewManager:
         Stateless check of PR feedback using PyGithub.
         Returns JSON summary of status.
         """
+        def get_aware_utc_datetime(dt_obj):
+            """Converts a naive datetime from PyGithub into a timezone-aware one."""
+            if dt_obj is None:
+                return None
+            return dt_obj.replace(tzinfo=timezone.utc)
+
         try:
             pr = self.repo.get_pull(pr_number)
             
@@ -162,7 +168,8 @@ class ReviewManager:
             
             # 1. Issue Comments (General)
             for comment in pr.get_issue_comments():
-                if comment.created_at.replace(tzinfo=timezone.utc) > since_dt:
+                comment_dt = get_aware_utc_datetime(comment.created_at)
+                if comment_dt and comment_dt > since_dt:
                     new_feedback.append({
                         "type": "issue_comment",
                         "user": comment.user.login,
@@ -173,7 +180,8 @@ class ReviewManager:
 
             # 2. Review Comments (Inline)
             for comment in pr.get_review_comments():
-                if comment.created_at.replace(tzinfo=timezone.utc) > since_dt:
+                comment_dt = get_aware_utc_datetime(comment.created_at)
+                if comment_dt and comment_dt > since_dt:
                     new_feedback.append({
                         "type": "inline_comment",
                         "user": comment.user.login,
@@ -185,10 +193,8 @@ class ReviewManager:
 
             # 3. Reviews (Approvals/changes requested)
             for review in pr.get_reviews():
-                # Guard against None submitted_at (pending reviews)
-                if review.submitted_at is None:
-                    continue
-                if review.submitted_at.replace(tzinfo=timezone.utc) > since_dt:
+                review_dt = get_aware_utc_datetime(review.submitted_at)
+                if review_dt and review_dt > since_dt:
                     new_feedback.append({
                         "type": "review_summary",
                         "user": review.user.login,

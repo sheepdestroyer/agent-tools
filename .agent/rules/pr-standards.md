@@ -2,9 +2,9 @@
 
 ## 1. The Loop Rule
 A Review Cycle is a **LOOP**, not a check.
-*   **Definition**: A cycle is `Push -> Trigger -> Poll -> Analyze -> Fix -> REPEAT`.
+*   **Definition**: A cycle is `Push -> Check Status -> Analyze -> Fix -> REPEAT`. Only trigger new reviews after a push, not repeatedly.
 *   **Exit Condition**: You may ONLY exit the loop when the reviewer explicitly states "Ready to Merge", "No issues found", or if the very latest gemini-code-assist bot comment states it is currently rate limited (ignoring previous, expired warnings).
-*   **Prohibition**: Never stop after fixing issues without re-verifying with the bot. Use `pr_skill wait` to autonomously loop until feedback is received.
+*   **Prohibition**: Never stop after fixing issues without re-verifying with the bot. Never trigger new reviews without first checking existing feedback using `pr_skill.py status`.
 
 ## 2. Push Before Trigger
 **STRICT RULE**: You MUST `git push` your changes BEFORE triggering a review.
