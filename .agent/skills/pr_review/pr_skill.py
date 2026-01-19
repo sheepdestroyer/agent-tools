@@ -10,7 +10,7 @@ import subprocess
 import argparse
 import time
 from datetime import datetime, timezone, timedelta
-from github import Github, GithubException
+from github import Github, GithubException, Auth
 
 # Constants for Review Bots
 REVIEW_COMMANDS = [
@@ -30,11 +30,11 @@ class ReviewManager:
             try:
                 res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True)
                 self.token = res.stdout.strip()
-            except subprocess.CalledProcessError:
-                print("Error: No GITHUB_TOKEN found and 'gh auth token' failed.", file=sys.stderr)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print("Error: No GITHUB_TOKEN found and 'gh' command failed or is not installed.", file=sys.stderr)
                 sys.exit(1)
         
-        self.g = Github(self.token)
+        self.g = Github(auth=Auth.Token(self.token))
         self.repo = self._detect_repo()
         self._ensure_workspace()
 
@@ -87,13 +87,14 @@ class ReviewManager:
         return True, "Code is clean and pushed."
 
     def safe_push(self):
-        """Attempts to push changes safely, aborting if pull is needed."""
+        """Attempts to push changes safely, aborting if uncommitted changes exist."""
         print("Running safe push verification...", file=sys.stderr)
         
-        # Check git status first
-        is_clean, msg = self._check_local_state()
-        if not is_clean:
-            print(f"Error: {msg}", file=sys.stderr)
+        # Only check for uncommitted changes, NOT for unpushed commits
+        # (the whole point of safe_push is to push those commits!)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+        if status.stdout.strip():
+            print("Error: Uncommitted changes detected. Please commit or stash them first.", file=sys.stderr)
             return False
 
         # Attempt push
@@ -184,6 +185,9 @@ class ReviewManager:
 
             # 3. Reviews (Approvals/changes requested)
             for review in pr.get_reviews():
+                # Guard against None submitted_at (pending reviews)
+                if review.submitted_at is None:
+                    continue
                 if review.submitted_at.replace(tzinfo=timezone.utc) > since_dt:
                     new_feedback.append({
                         "type": "review_summary",
