@@ -12,19 +12,17 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
 2.  **Trigger Reviews (Robust)**
     *   Use the robust skill to trigger reviews (automatically checks for unpushed changes):
     ```bash
-    python3 agent-tools/.agent/skills/pr_review/pr_skill.py trigger {PR_NUMBER}
+    python3 .agent/skills/pr_review/pr_skill.py trigger {PR_NUMBER}
     ```
 
-3.  **Monitor Status (Stateless)**
-    *   Wait at least **3 minutes** before the first check.
-    *   Check for review status (returns immediately, does not hang):
+3.  **Wait for Feedback (Autonomous)**
+    *   Use the blocking `wait` command to poll for new feedback without exiting:
     ```bash
-    python3 agent-tools/.agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}
+    python3 .agent/skills/pr_review/pr_skill.py wait {PR_NUMBER} --timeout 15
     ```
-    *   Alternatively, use Github MCP tool or `gh` CLI to check status manually if the script fails.
+    *   This command blocks until feedback is detected or timeout is reached.
 
 4.  **Analyze & Implement**
-    *   Read `feedback.json`.
     *   Implement fixes for all valid issues.
     *   **Loop**: Return to Step 1 until "Ready to Merge".
 

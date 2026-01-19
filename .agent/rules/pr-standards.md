@@ -4,7 +4,7 @@
 A Review Cycle is a **LOOP**, not a check.
 *   **Definition**: A cycle is `Push -> Trigger -> Poll -> Analyze -> Fix -> REPEAT`.
 *   **Exit Condition**: You may ONLY exit the loop when the reviewer explicitly states "Ready to Merge", "No issues found", or if the very latest gemini-code-assist bot comment states it is currently rate limited (ignoring previous, expired warnings).
-*   **Prohibition**: Never stop after fixing issues without re-verifying with the bot.
+*   **Prohibition**: Never stop after fixing issues without re-verifying with the bot. Use `pr_skill wait` to autonomously loop until feedback is received.
 
 ## 2. Push Before Trigger
 **STRICT RULE**: You MUST `git push` your changes BEFORE triggering a review.
@@ -46,6 +46,7 @@ A Review Cycle is a **LOOP**, not a check.
 
 ## 9. Agent Autonomy
 *   **No Idling**: Agents must actively monitor polling scripts. Do NOT exit/notify the user just to wait for a bot or a long process.
+*   **Autonomous Looping**: Use `pr_skill wait <PR> --timeout 15` to block and wait for feedback efficiently. This allows the Agent to stay active and respond immediately to new feedback without user intervention.
 *   **Autonomous Action**: Agents are AUTHORIZED and REQUIRED to `git commit` and `git push` fixes autonomously if tests pass. Do not ask the user to push for you.
 *   **Self-Correction**: If a tool fails (e.g., specific monitoring script), fallback to raw `gh` commands immediately.
 

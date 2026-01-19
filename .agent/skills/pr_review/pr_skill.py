@@ -8,7 +8,8 @@ import os
 import json
 import subprocess
 import argparse
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timezone, timedelta
 from github import Github, GithubException
 
 # Constants for Review Bots
@@ -92,8 +93,8 @@ class ReviewManager:
         # Check git status first
         is_clean, msg = self._check_local_state()
         if not is_clean:
-             print(f"Error: {msg}", file=sys.stderr)
-             return False
+            print(f"Error: {msg}", file=sys.stderr)
+            return False
 
         # Attempt push
         try:
@@ -205,6 +206,49 @@ class ReviewManager:
             print(f"GitHub API Error: {e}", file=sys.stderr)
             sys.exit(1)
 
+    def wait_for_feedback(self, pr_number, timeout_minutes=15, interval_seconds=60):
+        """
+        Blocks and polls until new bot feedback is detected or timeout.
+        Returns generated feedback status.
+        """
+        print(f"Waiting for feedback on PR #{pr_number} (Timeout: {timeout_minutes}m, Poll: {interval_seconds}s)...", file=sys.stderr)
+        
+        start_time = datetime.now(timezone.utc)
+        end_time = start_time + timedelta(minutes=timeout_minutes)
+        
+        # Get baseline state
+        try:
+            pr = self.repo.get_pull(pr_number)
+            baseline_comments = pr.comments + pr.review_comments
+            baseline_updated = pr.updated_at.replace(tzinfo=timezone.utc)
+            
+            print(f"Baseline: {baseline_comments} comments, updated at {baseline_updated.isoformat()}", file=sys.stderr)
+
+            while datetime.now(timezone.utc) < end_time:
+                time.sleep(interval_seconds)
+                
+                # Refresh PR - getting the object again forces a refresh in PyGithub
+                pr = self.repo.get_pull(pr_number) 
+                
+                current_comments = pr.comments + pr.review_comments
+                current_updated = pr.updated_at.replace(tzinfo=timezone.utc)
+                
+                # Check for *any* change in update time or comment count
+                if current_comments > baseline_comments or current_updated > baseline_updated:
+                    print(f"Detected change! ({current_comments} comments, updated {current_updated.isoformat()})", file=sys.stderr)
+                    # We return the status since the baseline, effectively capturing the new items.
+                    self.check_status(pr_number, since_iso=baseline_updated.isoformat())
+                    return
+
+                print(".", end="", flush=True, file=sys.stderr)
+        
+        except GithubException as e:
+             print(f"GitHub Error during wait: {e}", file=sys.stderr)
+             sys.exit(1)
+
+        print(f"\nTimeout reached ({timeout_minutes}m). No new feedback detected.", file=sys.stderr)
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="PR Skill Agent Tool")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -221,6 +265,12 @@ def main():
     # Safe Push
     p_push = subparsers.add_parser("safe_push", help="Push changes safely")
 
+    # Wait
+    p_wait = subparsers.add_parser("wait", help="Block and wait for feedback")
+    p_wait.add_argument("pr_number", type=int)
+    p_wait.add_argument("--timeout", type=int, default=15, help="Timeout in minutes")
+    p_wait.add_argument("--interval", type=int, default=60, help="Poll interval in seconds")
+
     args = parser.parse_args()
     mgr = ReviewManager()
 
@@ -232,6 +282,8 @@ def main():
         success = mgr.safe_push()
         if not success:
             sys.exit(1)
+    elif args.command == "wait":
+        mgr.wait_for_feedback(args.pr_number, args.timeout, args.interval)
 
 if __name__ == "__main__":
     main()
