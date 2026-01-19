@@ -27,7 +27,7 @@ Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc
 *   **Output**: Success message or error instruction.
 
 ```bash
-python3 .agent/skills/pr_review/pr_skill.py trigger <PR_NUMBER>
+python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER>
 ```
 
 ### `check_status`
@@ -69,7 +69,7 @@ python3 .agent/skills/pr_review/pr_skill.py wait <PR_NUMBER>
 
 2. **Trigger Review**:
    ```bash
-   python3 .agent/skills/pr_review/pr_skill.py trigger 123
+   python3 .agent/skills/pr_review/pr_skill.py trigger_review 123
    ```
 
 3. **Check Status** (after waiting 2-3 minutes):

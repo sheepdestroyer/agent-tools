@@ -12,7 +12,7 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
 2.  **Trigger Reviews (Robust)**
     *   Use the robust skill to trigger reviews (automatically checks for unpushed changes):
     ```bash
-    python3 .agent/skills/pr_review/pr_skill.py trigger {PR_NUMBER}
+    python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}
     ```
 
 3.  **Wait for Feedback (Autonomous)**

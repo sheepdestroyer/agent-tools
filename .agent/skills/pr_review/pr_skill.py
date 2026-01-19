@@ -253,8 +253,8 @@ def main():
     parser = argparse.ArgumentParser(description="PR Skill Agent Tool")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Trigger
-    p_trigger = subparsers.add_parser("trigger", help="Trigger reviews safely")
+    # Trigger Review
+    p_trigger = subparsers.add_parser("trigger_review", help="Trigger reviews safely")
     p_trigger.add_argument("pr_number", type=int)
 
     # Status
@@ -274,7 +274,7 @@ def main():
     args = parser.parse_args()
     mgr = ReviewManager()
 
-    if args.command == "trigger":
+    if args.command == "trigger_review":
         mgr.trigger_review(args.pr_number)
     elif args.command == "status":
         mgr.check_status(args.pr_number, args.since)
