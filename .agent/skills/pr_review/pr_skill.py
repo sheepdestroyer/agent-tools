@@ -35,6 +35,12 @@ class ReviewManager:
         
         self.g = Github(self.token)
         self.repo = self._detect_repo()
+        self._ensure_workspace()
+
+    def _ensure_workspace(self):
+        """Enforces Rule 3: Artifact Hygiene. Creates agent-workspace/ if missing."""
+        workspace = os.path.join(os.getcwd(), "agent-workspace")
+        os.makedirs(workspace, exist_ok=True)
 
     def _detect_repo(self):
         """Auto-detects current repository from git remote."""
@@ -67,8 +73,8 @@ class ReviewManager:
         branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
         
         # Check if upstream is configured
-        upstream = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True).stdout.strip()
-        if not upstream:
+        upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True)
+        if upstream_proc.returncode != 0:
              return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
         
         # Check for unpushed commits
@@ -81,11 +87,11 @@ class ReviewManager:
 
     def safe_push(self):
         """Attempts to push changes safely, aborting if pull is needed."""
-        print("Runnning safe push verification...", file=sys.stderr)
+        print("Running safe push verification...", file=sys.stderr)
         
         # Check git status first
-        clean, msg = self._check_local_state()
-        if "Uncommitted" in msg:
+        is_clean, msg = self._check_local_state()
+        if not is_clean:
              print(f"Error: {msg}", file=sys.stderr)
              return False
 
@@ -178,7 +184,7 @@ class ReviewManager:
             # 3. Reviews (Approvals/changes requested)
             for review in pr.get_reviews():
                 if review.submitted_at.replace(tzinfo=timezone.utc) > since_dt:
-                     new_feedback.append({
+                    new_feedback.append({
                         "type": "review_summary",
                         "user": review.user.login,
                         "state": review.state,
