@@ -38,7 +38,7 @@ Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc
 python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER>
 ```
 
-### `check_status`
+### `status`
 
 Checks for new feedback on a PR since a given timestamp.
 *   **Parameters**:
