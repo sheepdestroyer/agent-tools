@@ -8,8 +8,7 @@ import os
 import json
 import subprocess
 import argparse
-import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from github import Github, GithubException, Auth
 
 # Constants for Review Bots
@@ -99,7 +98,7 @@ class ReviewManager:
 
         # Attempt push
         try:
-            subprocess.run(["git", "push"], check=True)
+            subprocess.run(["git", "push"], check=True, timeout=60)
             print("Push successful.", file=sys.stderr)
             return True
         except subprocess.CalledProcessError:
@@ -167,7 +166,7 @@ class ReviewManager:
             new_feedback = []
             
             # 1. Issue Comments (General)
-            for comment in pr.get_issue_comments():
+            for comment in pr.get_issue_comments(since=since_dt):
                 comment_dt = get_aware_utc_datetime(comment.created_at)
                 if comment_dt and comment_dt > since_dt:
                     new_feedback.append({
@@ -179,7 +178,7 @@ class ReviewManager:
                     })
 
             # 2. Review Comments (Inline)
-            for comment in pr.get_review_comments():
+            for comment in pr.get_review_comments(since=since_dt):
                 comment_dt = get_aware_utc_datetime(comment.created_at)
                 if comment_dt and comment_dt > since_dt:
                     new_feedback.append({
