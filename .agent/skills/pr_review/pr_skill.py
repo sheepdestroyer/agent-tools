@@ -8,6 +8,7 @@ import os
 import json
 import subprocess
 import argparse
+import time
 from datetime import datetime, timezone
 from github import Github, GithubException, Auth
 
@@ -131,7 +132,23 @@ class ReviewManager:
                 print(f"  Posted: {cmd}", file=sys.stderr)
                 
             print("All review bots triggered successfully.", file=sys.stderr)
-            print("Please wait 2-3 minutes before checking status.", file=sys.stderr)
+            
+            # Step 3: Auto-Wait and Check (Enforce Loop)
+            print("-" * 40, file=sys.stderr)
+            print("Auto-waiting 60 seconds for initial feedback to ensure loop continuity...", file=sys.stderr)
+            try:
+                 time.sleep(60)
+            except KeyboardInterrupt:
+                 print("\nWait interrupted. checking status immediately...", file=sys.stderr)
+
+            print("-" * 40, file=sys.stderr)
+            print("Initial Status Check:", file=sys.stderr)
+            # Check status since 1 minute ago
+            since_time = (datetime.now(timezone.utc).replace(second=0, microsecond=0)).isoformat()
+            self.check_status(pr_number, since_iso=None) # Check all recent items, or just all items to be safe? 
+            # Better to show everything relevant.
+            print("-" * 40, file=sys.stderr)
+            print("To check again later, run: pr_skill.py status " + str(pr_number), file=sys.stderr)
 
         except GithubException as e:
             print(f"GitHub API Error: {e}", file=sys.stderr)
