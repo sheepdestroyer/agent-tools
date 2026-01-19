@@ -102,8 +102,8 @@ class ReviewManager:
             subprocess.run(["git", "push"], check=True, timeout=60)
             print("Push successful.", file=sys.stderr)
             return True
-        except subprocess.CalledProcessError:
-            print("Error: Push failed. You may need to pull changes first.", file=sys.stderr)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            print("Error: Push failed or timed out. You may need to pull changes first or check your connection.", file=sys.stderr)
             return False
 
     def trigger_review(self, pr_number):
@@ -183,7 +183,10 @@ class ReviewManager:
             new_feedback = []
             
             # 1. Issue Comments (General)
-            for comment in pr.get_issue_comments(since=since_dt):
+            # PyGithub PullRequest.get_issue_comments() doesn't support 'since'.
+            # We must use the Issue object to filter by date server-side.
+            issue = self.repo.get_issue(pr_number)
+            for comment in issue.get_comments(since=since_dt):
                 comment_dt = get_aware_utc_datetime(comment.created_at)
                 if comment_dt and comment_dt > since_dt:
                     new_feedback.append({
