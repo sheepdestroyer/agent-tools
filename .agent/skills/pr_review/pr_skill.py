@@ -23,6 +23,13 @@ REVIEW_COMMANDS = [
     "@ellipsis review this"
 ]
 
+# Timeout constants for subprocess calls (in seconds)
+GIT_SHORT_TIMEOUT = 10
+GIT_FETCH_TIMEOUT = 30
+GIT_PUSH_TIMEOUT = 60
+GH_AUTH_TIMEOUT = 10
+GH_REPO_VIEW_TIMEOUT = 30
+
 def print_json(data):
     """Helper to print JSON to stdout."""
     print(json.dumps(data, indent=2))
@@ -39,7 +46,7 @@ class ReviewManager:
         if not self.token:
             # Fallback to gh CLI for auth token if env var is missing
             try:
-                res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True, timeout=10)
+                res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True, timeout=GH_AUTH_TIMEOUT)
                 self.token = res.stdout.strip()
             except (subprocess.CalledProcessError, FileNotFoundError):
                 print_error("No GITHUB_TOKEN found and 'gh' command failed or is not installed.")
@@ -68,7 +75,7 @@ class ReviewManager:
             # Get origin URL
             res = subprocess.run(
                 ["git", "config", "--get", "remote.origin.url"],
-                capture_output=True, text=True, check=True, timeout=5
+                capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT
             )
             url = res.stdout.strip()
             
@@ -78,15 +85,16 @@ class ReviewManager:
             if match:
                 full_name = f"{match.group(1)}/{match.group(2)}"
                 return self.g.get_repo(full_name)
-        except Exception:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
             # Ignore local errors and fall back to gh
+            self._log("Local git remote check failed, falling back to 'gh'...")
             pass
 
         # 2. Fallback to gh CLI (slower, network dependent)
         try:
             res = subprocess.run(
                 ["gh", "repo", "view", "--json", "owner,name"],
-                capture_output=True, text=True, check=True, timeout=30
+                capture_output=True, text=True, check=True, timeout=GH_REPO_VIEW_TIMEOUT
             )
             data = json.loads(res.stdout)
             full_name = f"{data['owner']['login']}/{data['name']}"
@@ -101,29 +109,29 @@ class ReviewManager:
         2. Local branch is pushed (no diff with upstream)
         """
         # 1. Check for uncommitted changes
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=10)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
         if status.stdout.strip():
             return False, "Uncommitted changes detected. Please commit or stash them first."
 
         # 2. Check if pushed to upstream
         try:
             # Fetch latest state from remote for accurate comparison
-            subprocess.run(["git", "fetch"], capture_output=True, check=True, timeout=30)
+            subprocess.run(["git", "fetch"], capture_output=True, check=True, timeout=GIT_FETCH_TIMEOUT)
 
             # Get current branch
-            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT).stdout.strip()
             
             # Check if upstream is configured
-            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10)
+            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
             if upstream_proc.returncode != 0:
                  return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
             
             # Check for unpushed commits
-            # git diff --quiet @{u} returns 0 if no diff, 1 if diff.
-            diff = subprocess.run(["git", "diff", "--quiet", "@{u}"], capture_output=True, timeout=30)
+            # git diff --quiet HEAD @{u} returns 0 if no diff, 1 if diff.
+            diff = subprocess.run(["git", "diff", "--quiet", "HEAD", "@{u}"], capture_output=True, timeout=GIT_FETCH_TIMEOUT)
             if diff.returncode != 0:
                 return False, f"Local branch '{branch}' has unpushed changes. You MUST push before triggering a review."
-        except Exception as e:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             return False, f"Git check failed: {str(e)}"
             
         return True, "Code is clean and pushed."
@@ -134,15 +142,15 @@ class ReviewManager:
         self._log("Running safe_push verification...")
         
         # Only check for uncommitted changes, NOT for unpushed commits
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=10)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
         if status.stdout.strip():
             return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
 
         # Check upstream configuration (optional but good for safety)
         try:
-            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=10).stdout.strip()
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT).stdout.strip()
             # Just check if we can get upstream, if not we might need -u
-            subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10, check=True)
+            subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT, check=True)
         except subprocess.CalledProcessError:
              return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
         except subprocess.TimeoutExpired:
@@ -150,7 +158,7 @@ class ReviewManager:
 
         # Attempt push
         try:
-            subprocess.run(["git", "push"], check=True, timeout=60)
+            subprocess.run(["git", "push"], check=True, timeout=GIT_PUSH_TIMEOUT)
             return {"status": "success", "message": "Push successful."}
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             return {"status": "error", "message": f"Push failed or timed out: {e}. You may need to pull changes first or check your connection."}
