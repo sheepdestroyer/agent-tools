@@ -51,6 +51,11 @@ class ReviewManager:
         except Exception as e:
             print_error(f"Initialization failed: {str(e)}")
 
+    def _log(self, message):
+        """Audit logging to stderr with timestamp."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        print(f"[{timestamp}] {message}", file=sys.stderr)
+
     def _ensure_workspace(self):
         """Enforces Rule 3: Artifact Hygiene. Creates agent-workspace/ if missing."""
         workspace = os.path.join(os.getcwd(), "agent-workspace")
@@ -102,6 +107,9 @@ class ReviewManager:
 
         # 2. Check if pushed to upstream
         try:
+            # Fetch latest state from remote for accurate comparison
+            subprocess.run(["git", "fetch"], capture_output=True, timeout=30)
+
             # Get current branch
             branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
             
@@ -122,12 +130,23 @@ class ReviewManager:
 
     def safe_push(self):
         """Attempts to push changes safely, aborting if uncommitted changes exist or if pull is needed."""
-        print("Running safe push verification...", file=sys.stderr)
+    def safe_push(self):
+        """Attempts to push changes safely, aborting if uncommitted changes exist or if pull is needed."""
+        self._log("Running safe_push verification...")
         
         # Only check for uncommitted changes, NOT for unpushed commits
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=10)
         if status.stdout.strip():
             return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
+
+        # Check upstream configuration
+        try:
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
+            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10)
+            if upstream_proc.returncode != 0:
+                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
+        except subprocess.TimeoutExpired:
+             return {"status": "error", "message": "Git operations timed out."}
 
         # Attempt push
         try:
@@ -146,7 +165,7 @@ class ReviewManager:
         if not is_safe:
             print_error(f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually.")
 
-        print(f"State verified: {msg}", file=sys.stderr)
+        self._log(f"State verified: {msg}")
 
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
@@ -155,26 +174,26 @@ class ReviewManager:
         triggered_bots = []
         try:
             pr = self.repo.get_pull(pr_number)
-            print(f"Triggering reviews on PR #{pr_number} ({pr.title})...", file=sys.stderr)
+            self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
             
             for cmd in REVIEW_COMMANDS:
                 pr.create_issue_comment(cmd)
-                print(f"  Posted: {cmd}", file=sys.stderr)
+                self._log(f"  Posted: {cmd}")
                 triggered_bots.append(cmd)
                 
-            print("All review bots triggered successfully.", file=sys.stderr)
+            self._log("All review bots triggered successfully.")
             
             # Step 3: Auto-Wait and Check (Enforce Loop)
             if wait_seconds > 0:
-                print("-" * 40, file=sys.stderr)
-                print(f"Auto-waiting {wait_seconds} seconds for initial feedback to ensure loop continuity...", file=sys.stderr)
+                self._log("-" * 40)
+                self._log(f"Auto-waiting {wait_seconds} seconds for initial feedback to ensure loop continuity...")
                 try:
                      time.sleep(wait_seconds)
                 except KeyboardInterrupt:
-                     print("\nWait interrupted. checking status immediately...", file=sys.stderr)
+                     self._log("\nWait interrupted. checking status immediately...")
 
-                print("-" * 40, file=sys.stderr)
-                print("Initial Status Check:", file=sys.stderr)
+                self._log("-" * 40)
+                self._log("Initial Status Check:")
                 
                 # Check status since start of trigger
                 status_data = self.check_status(pr_number, since_iso=start_time.isoformat(), return_data=True)
