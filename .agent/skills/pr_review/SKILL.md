@@ -25,7 +25,7 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 ### `safe_push`
 
 Safely pushes local changes to the remote repository.
-*   **Enforces**: Checks for uncommitted changes and unpushed commits.
+*   **Enforces**: Checks for uncommitted changes before pushing.
 *   **Returns**: JSON object with `status` ("success" or "error") and `message`.
 
 ```bash

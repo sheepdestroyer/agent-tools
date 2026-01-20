@@ -11,6 +11,7 @@ import subprocess
 import argparse
 import time
 from datetime import datetime, timezone
+import re
 from github import Github, GithubException, Auth
 
 # Constants for Review Bots
@@ -38,7 +39,7 @@ class ReviewManager:
         if not self.token:
             # Fallback to gh CLI for auth token if env var is missing
             try:
-                res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True)
+                res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True, timeout=10)
                 self.token = res.stdout.strip()
             except (subprocess.CalledProcessError, FileNotFoundError):
                 print_error("No GITHUB_TOKEN found and 'gh' command failed or is not installed.")
@@ -56,19 +57,37 @@ class ReviewManager:
         os.makedirs(workspace, exist_ok=True)
 
     def _detect_repo(self):
-        """Auto-detects current repository from git remote."""
+        """Auto-detects current repository from git remote (local check preferred)."""
+        # 1. Try local git remote first (fast, no network)
         try:
-            # Get remote URL
+            # Get origin URL
+            res = subprocess.run(
+                ["git", "config", "--get", "remote.origin.url"],
+                capture_output=True, text=True, check=True, timeout=5
+            )
+            url = res.stdout.strip()
+            
+            # Extract owner/repo using regex
+            # Matches: https://github.com/owner/repo.git, git@github.com:owner/repo.git, etc.
+            match = re.search(r"github\.com[:/]([^/.]+)/([^/.]+?)(?:\.git)?$", url)
+            if match:
+                full_name = f"{match.group(1)}/{match.group(2)}"
+                return self.g.get_repo(full_name)
+        except Exception:
+            # Ignore local errors and fall back to gh
+            pass
+
+        # 2. Fallback to gh CLI (slower, network dependent)
+        try:
             res = subprocess.run(
                 ["gh", "repo", "view", "--json", "owner,name"],
-                capture_output=True, text=True, check=True
+                capture_output=True, text=True, check=True, timeout=30
             )
             data = json.loads(res.stdout)
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
-        except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
-            # We can't use print_error here easily if we want to bubble up, but init catches exceptions
-            raise RuntimeError(f"Error checking repository context: {e}")
+        except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+            raise RuntimeError("Error checking repository context: Ensure 'gh' is installed and you are in a git repository.")
 
     def _check_local_state(self):
         """
@@ -77,23 +96,23 @@ class ReviewManager:
         2. Local branch is pushed (no diff with upstream)
         """
         # 1. Check for uncommitted changes
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=10)
         if status.stdout.strip():
             return False, "Uncommitted changes detected. Please commit or stash them first."
 
         # 2. Check if pushed to upstream
         try:
             # Get current branch
-            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
             
             # Check if upstream is configured
-            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True)
+            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10)
             if upstream_proc.returncode != 0:
                  return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
             
             # Check for unpushed commits
             # git diff --quiet @{u} returns 0 if no diff, 1 if diff.
-            diff = subprocess.run(["git", "diff", "--quiet", "@{u}"], capture_output=True)
+            diff = subprocess.run(["git", "diff", "--quiet", "@{u}"], capture_output=True, timeout=30)
             if diff.returncode != 0:
                 return False, f"Local branch '{branch}' has unpushed changes. You MUST push before triggering a review."
         except Exception as e:
@@ -106,7 +125,7 @@ class ReviewManager:
         print("Running safe push verification...", file=sys.stderr)
         
         # Only check for uncommitted changes, NOT for unpushed commits
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=10)
         if status.stdout.strip():
             return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
 
@@ -128,6 +147,9 @@ class ReviewManager:
             print_error(f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually.")
 
         print(f"State verified: {msg}", file=sys.stderr)
+
+        # Capture start time for status check
+        start_time = datetime.now(timezone.utc)
 
         # Step 2: Trigger Bots
         triggered_bots = []
@@ -154,9 +176,8 @@ class ReviewManager:
                 print("-" * 40, file=sys.stderr)
                 print("Initial Status Check:", file=sys.stderr)
                 
-                # Check status since 1 minute ago (or approximate start of trigger)
-                since_time = (datetime.now(timezone.utc).replace(second=0, microsecond=0)).isoformat()
-                status_data = self.check_status(pr_number, since_iso=since_time, return_data=True)
+                # Check status since start of trigger
+                status_data = self.check_status(pr_number, since_iso=start_time.isoformat(), return_data=True)
             else:
                 status_data = {"status": "skipped", "message": "Initial status check skipped due to wait_seconds=0."}
             
