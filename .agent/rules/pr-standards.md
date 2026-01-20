@@ -23,7 +23,7 @@ A Review Cycle is a **LOOP**, not a check.
 *   **Timeout**: Set a reasonable timeout (e.g., 15-25 minutes) to avoid infinite loops, but do not give up early.
 
 ## 5. Tool Usage
-*   **Primary Tool**: Use `agent-tools/.agent/skills/pr_review/pr_skill.py` for triggering, status checks, and safe pushing.
+*   **Primary Tool**: Use `.agent/skills/pr_review/pr_skill.py` for triggering, status checks, and safe pushing.
 *   **Fallback**: Use **GitHub MCP** tools as the first fallback. Use `gh` CLI only if MCP tools are unavailable or failing.
 *   **Path Safety**: Ensure all file paths passed to tools are validated to be within the project root.
 

@@ -102,7 +102,7 @@ class ReviewManager:
         return True, "Code is clean and pushed."
 
     def safe_push(self):
-        """Attempts to push changes safely, aborting if uncommitted changes exist."""
+        """Attempts to push changes safely, aborting if uncommitted changes exist or if pull is needed."""
         print("Running safe push verification...", file=sys.stderr)
         
         # Only check for uncommitted changes, NOT for unpushed commits
@@ -151,12 +151,14 @@ class ReviewManager:
                 except KeyboardInterrupt:
                      print("\nWait interrupted. checking status immediately...", file=sys.stderr)
 
-            print("-" * 40, file=sys.stderr)
-            print("Initial Status Check:", file=sys.stderr)
-            
-            # Check status since 1 minute ago (or approximate start of trigger)
-            since_time = (datetime.now(timezone.utc).replace(second=0, microsecond=0)).isoformat()
-            status_data = self.check_status(pr_number, since_iso=None, return_data=True)
+                print("-" * 40, file=sys.stderr)
+                print("Initial Status Check:", file=sys.stderr)
+                
+                # Check status since 1 minute ago (or approximate start of trigger)
+                since_time = (datetime.now(timezone.utc).replace(second=0, microsecond=0)).isoformat()
+                status_data = self.check_status(pr_number, since_iso=since_time, return_data=True)
+            else:
+                status_data = {"status": "skipped", "message": "Initial status check skipped due to wait_seconds=0."}
             
             return {
                 "status": "success",
@@ -222,17 +224,18 @@ class ReviewManager:
                         "created_at": comment.created_at.isoformat()
                     })
 
-            # 3. Reviews (Approvals/changes requested)
+            # 3. Reviews (Approvals/changes requested) - Filter locally
             for review in pr.get_reviews():
-                review_dt = get_aware_utc_datetime(review.submitted_at)
-                if review_dt and review_dt > since_dt:
-                    new_feedback.append({
-                        "type": "review_summary",
-                        "user": review.user.login,
-                        "state": review.state,
-                        "body": review.body,
-                        "created_at": review.submitted_at.isoformat()
-                    })
+                if review.submitted_at: # Ensure submitted_at is not None before processing
+                    review_dt = get_aware_utc_datetime(review.submitted_at)
+                    if review_dt and review_dt > since_dt:
+                        new_feedback.append({
+                            "type": "review_summary",
+                            "user": review.user.login,
+                            "state": review.state,
+                            "body": review.body,
+                            "created_at": review.submitted_at.isoformat()
+                        })
             
             output = {
                 "status": "success",

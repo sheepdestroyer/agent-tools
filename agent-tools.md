@@ -18,7 +18,7 @@ python3 .agent/skills/pr_review/pr_skill.py safe_push
 
 #### 2. `trigger_review`
 Posts the required comments to trigger AI reviews from Gemini, CodeRabbit, Sourcery, Qodo, and Ellipsis.
-**Constraint**: Automatically runs `safe_push` checks. Autos-fails if local branch is not pushed.
+**Constraint**: Automatically runs `safe_push` checks. Auto-fails if local branch is not pushed.
 ```bash
 python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}
 ```

@@ -16,7 +16,6 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
     *   If there are unaddressed issues, skip to Step 4 (Analyze & Implement).
     *   Only proceed to Step 3 if no existing feedback or all feedback has been addressed.
 
-// turbo
 3.  **Trigger Reviews (Only When Needed)**
     *   Use the robust skill to trigger reviews (automatically checks for unpushed changes):
     ```bash
