@@ -101,7 +101,7 @@ class ReviewManager:
         2. Local branch is pushed (no diff with upstream)
         """
         # 1. Check for uncommitted changes
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=10)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=10)
         if status.stdout.strip():
             return False, "Uncommitted changes detected. Please commit or stash them first."
 
@@ -111,7 +111,7 @@ class ReviewManager:
             subprocess.run(["git", "fetch"], capture_output=True, check=True, timeout=30)
 
             # Get current branch
-            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=10).stdout.strip()
             
             # Check if upstream is configured
             upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10)
@@ -134,13 +134,13 @@ class ReviewManager:
         self._log("Running safe_push verification...")
         
         # Only check for uncommitted changes, NOT for unpushed commits
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=10)
+        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=10)
         if status.stdout.strip():
             return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
 
         # Check upstream configuration (optional but good for safety)
         try:
-            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=10).stdout.strip()
             # Just check if we can get upstream, if not we might need -u
             subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10, check=True)
         except subprocess.CalledProcessError:
