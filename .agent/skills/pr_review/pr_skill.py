@@ -241,7 +241,7 @@ class ReviewManager:
             # 1. Issue Comments (General)
             issue = self.repo.get_issue(pr_number)
             for comment in issue.get_comments(since=since_dt):
-                comment_dt = get_aware_utc_datetime(comment.created_at)
+                comment_dt = get_aware_utc_datetime(comment.updated_at)
                 if comment_dt and comment_dt > since_dt:
                     new_feedback.append({
                         "type": "issue_comment",
