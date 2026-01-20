@@ -91,7 +91,7 @@ class ReviewManager:
             data = json.loads(res.stdout)
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
-        except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+        except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError, ValueError):
             raise RuntimeError("Error checking repository context: Ensure 'gh' is installed and you are in a git repository.")
 
     def _check_local_state(self):
@@ -108,7 +108,7 @@ class ReviewManager:
         # 2. Check if pushed to upstream
         try:
             # Fetch latest state from remote for accurate comparison
-            subprocess.run(["git", "fetch"], capture_output=True, timeout=30)
+            subprocess.run(["git", "fetch"], capture_output=True, check=True, timeout=30)
 
             # Get current branch
             branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
@@ -130,7 +130,7 @@ class ReviewManager:
 
 
     def safe_push(self):
-        """Attempts to push changes safely, aborting if uncommitted changes exist or if pull is needed."""
+        """Attempts to push changes safely, aborting if uncommitted changes exist. Ignores unpushed commits check."""
         self._log("Running safe_push verification...")
         
         # Only check for uncommitted changes, NOT for unpushed commits
@@ -138,12 +138,13 @@ class ReviewManager:
         if status.stdout.strip():
             return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
 
-        # Check upstream configuration
+        # Check upstream configuration (optional but good for safety)
         try:
             branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
-            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10)
-            if upstream_proc.returncode != 0:
-                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
+            # Just check if we can get upstream, if not we might need -u
+            subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=10, check=True)
+        except subprocess.CalledProcessError:
+             return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
         except subprocess.TimeoutExpired:
              return {"status": "error", "message": "Git operations timed out."}
 
@@ -151,8 +152,8 @@ class ReviewManager:
         try:
             subprocess.run(["git", "push"], check=True, timeout=60)
             return {"status": "success", "message": "Push successful."}
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            return {"status": "error", "message": "Push failed or timed out. You may need to pull changes first or check your connection."}
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            return {"status": "error", "message": f"Push failed or timed out: {e}. You may need to pull changes first or check your connection."}
 
     def trigger_review(self, pr_number, wait_seconds=60):
         """
@@ -252,7 +253,8 @@ class ReviewManager:
 
             # 2. Review Comments (Inline)
             for comment in pr.get_review_comments(since=since_dt):
-                comment_dt = get_aware_utc_datetime(comment.created_at)
+                # Use updated_at to catch edits
+                comment_dt = get_aware_utc_datetime(comment.updated_at)
                 if comment_dt and comment_dt > since_dt:
                     new_feedback.append({
                         "type": "inline_comment",
@@ -260,7 +262,8 @@ class ReviewManager:
                         "body": comment.body,
                         "path": comment.path,
                         "line": comment.line,
-                        "created_at": comment.created_at.isoformat()
+                        "updated_at": comment_dt.isoformat(),
+                        "url": comment.html_url
                     })
 
             # 3. Reviews (Approvals/changes requested) - Filter locally
