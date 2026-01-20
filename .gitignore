@@ -33,3 +33,4 @@ agent-workspace/
 git_*.txt
 listing.txt
 *_ts.txt
+pr_feedback.json
