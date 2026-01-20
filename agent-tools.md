@@ -5,7 +5,7 @@ The `pr_skill.py` script is a robust Agent Skill designed to streamline the PR r
 ## Usage
 
 ```bash
-python3 agent-tools/.agent/skills/pr_review/pr_skill.py [command] [args]
+python3 .agent/skills/pr_review/pr_skill.py [command] [args]
 ```
 
 ### Tools

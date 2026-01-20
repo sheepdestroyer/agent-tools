@@ -128,8 +128,7 @@ class ReviewManager:
             
         return True, "Code is clean and pushed."
 
-    def safe_push(self):
-        """Attempts to push changes safely, aborting if uncommitted changes exist or if pull is needed."""
+
     def safe_push(self):
         """Attempts to push changes safely, aborting if uncommitted changes exist or if pull is needed."""
         self._log("Running safe_push verification...")

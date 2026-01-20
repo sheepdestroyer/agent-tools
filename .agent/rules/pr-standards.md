@@ -1,5 +1,9 @@
 # PR Review Standards & Rules
 
+> [!IMPORTANT]
+> **Canonical Source**: This file defines the authoritative PR standards and rules.
+> All agents MUST follow the standards defined here.
+
 ## 1. The Loop Rule
 A Review Cycle is a **LOOP**, not a check.
 *   **Definition**: A cycle is `Push -> Check Status -> Analyze -> Fix -> REPEAT`. Only trigger new reviews after a push, not repeatedly.
