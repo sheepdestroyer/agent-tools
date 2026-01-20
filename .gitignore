@@ -34,3 +34,4 @@ git_*.txt
 listing.txt
 *_ts.txt
 pr_feedback.json
+debug_*.txt
