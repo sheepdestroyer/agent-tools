@@ -2,6 +2,7 @@
 """
 Robust PR Review Skill using PyGithub.
 Enforces "Push Before Trigger" and "The Loop" programmatically.
+Outputs JSON to stdout for easy parsing by agents.
 """
 import sys
 import os
@@ -21,6 +22,15 @@ REVIEW_COMMANDS = [
     "@ellipsis review this"
 ]
 
+def print_json(data):
+    """Helper to print JSON to stdout."""
+    print(json.dumps(data, indent=2))
+
+def print_error(message, code=1):
+    """Helper to print error JSON to stdout and exit."""
+    print_json({"status": "error", "message": message, "code": code})
+    sys.exit(code)
+
 class ReviewManager:
     def __init__(self):
         # Authenticate with GitHub
@@ -31,12 +41,14 @@ class ReviewManager:
                 res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True)
                 self.token = res.stdout.strip()
             except (subprocess.CalledProcessError, FileNotFoundError):
-                print("Error: No GITHUB_TOKEN found and 'gh' command failed or is not installed.", file=sys.stderr)
-                sys.exit(1)
+                print_error("No GITHUB_TOKEN found and 'gh' command failed or is not installed.")
         
-        self.g = Github(auth=Auth.Token(self.token))
-        self.repo = self._detect_repo()
-        self._ensure_workspace()
+        try:
+            self.g = Github(auth=Auth.Token(self.token))
+            self.repo = self._detect_repo()
+            self._ensure_workspace()
+        except Exception as e:
+            print_error(f"Initialization failed: {str(e)}")
 
     def _ensure_workspace(self):
         """Enforces Rule 3: Artifact Hygiene. Creates agent-workspace/ if missing."""
@@ -55,8 +67,8 @@ class ReviewManager:
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
         except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error checking repository context: {e}", file=sys.stderr)
-            sys.exit(1)
+            # We can't use print_error here easily if we want to bubble up, but init catches exceptions
+            raise RuntimeError(f"Error checking repository context: {e}")
 
     def _check_local_state(self):
         """
@@ -70,19 +82,22 @@ class ReviewManager:
             return False, "Uncommitted changes detected. Please commit or stash them first."
 
         # 2. Check if pushed to upstream
-        # Get current branch
-        branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
-        
-        # Check if upstream is configured
-        upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True)
-        if upstream_proc.returncode != 0:
-             return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
-        
-        # Check for unpushed commits
-        # git diff --quiet @{u} returns 0 if no diff, 1 if diff.
-        diff = subprocess.run(["git", "diff", "--quiet", "@{u}"], capture_output=True)
-        if diff.returncode != 0:
-            return False, f"Local branch '{branch}' has unpushed changes. You MUST push before triggering a review."
+        try:
+            # Get current branch
+            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+            
+            # Check if upstream is configured
+            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True)
+            if upstream_proc.returncode != 0:
+                 return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
+            
+            # Check for unpushed commits
+            # git diff --quiet @{u} returns 0 if no diff, 1 if diff.
+            diff = subprocess.run(["git", "diff", "--quiet", "@{u}"], capture_output=True)
+            if diff.returncode != 0:
+                return False, f"Local branch '{branch}' has unpushed changes. You MUST push before triggering a review."
+        except Exception as e:
+            return False, f"Git check failed: {str(e)}"
             
         return True, "Code is clean and pushed."
 
@@ -91,22 +106,18 @@ class ReviewManager:
         print("Running safe push verification...", file=sys.stderr)
         
         # Only check for uncommitted changes, NOT for unpushed commits
-        # (the whole point of safe_push is to push those commits!)
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
         if status.stdout.strip():
-            print("Error: Uncommitted changes detected. Please commit or stash them first.", file=sys.stderr)
-            return False
+            return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
 
         # Attempt push
         try:
             subprocess.run(["git", "push"], check=True, timeout=60)
-            print("Push successful.", file=sys.stderr)
-            return True
+            return {"status": "success", "message": "Push successful."}
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            print("Error: Push failed or timed out. You may need to pull changes first or check your connection.", file=sys.stderr)
-            return False
+            return {"status": "error", "message": "Push failed or timed out. You may need to pull changes first or check your connection."}
 
-    def trigger_review(self, pr_number):
+    def trigger_review(self, pr_number, wait_seconds=60):
         """
         1. Checks local state (Hard Constraint).
         2. Post comments to trigger bots.
@@ -114,50 +125,53 @@ class ReviewManager:
         # Step 1: Enforce Push
         is_safe, msg = self._check_local_state()
         if not is_safe:
-            print(f"FAILED: {msg}", file=sys.stderr)
-            print("Tip: Use the 'safe_push' tool or run 'git push' manually.", file=sys.stderr)
-            sys.exit(1)
+            print_error(f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually.")
 
         print(f"State verified: {msg}", file=sys.stderr)
 
         # Step 2: Trigger Bots
+        triggered_bots = []
         try:
             pr = self.repo.get_pull(pr_number)
             print(f"Triggering reviews on PR #{pr_number} ({pr.title})...", file=sys.stderr)
             
-            # Post one comment with all commands? Or separate? 
-            # Separate is safer for parsing by bots.
             for cmd in REVIEW_COMMANDS:
                 pr.create_issue_comment(cmd)
                 print(f"  Posted: {cmd}", file=sys.stderr)
+                triggered_bots.append(cmd)
                 
             print("All review bots triggered successfully.", file=sys.stderr)
             
             # Step 3: Auto-Wait and Check (Enforce Loop)
-            print("-" * 40, file=sys.stderr)
-            print("Auto-waiting 60 seconds for initial feedback to ensure loop continuity...", file=sys.stderr)
-            try:
-                 time.sleep(60)
-            except KeyboardInterrupt:
-                 print("\nWait interrupted. checking status immediately...", file=sys.stderr)
+            if wait_seconds > 0:
+                print("-" * 40, file=sys.stderr)
+                print(f"Auto-waiting {wait_seconds} seconds for initial feedback to ensure loop continuity...", file=sys.stderr)
+                try:
+                     time.sleep(wait_seconds)
+                except KeyboardInterrupt:
+                     print("\nWait interrupted. checking status immediately...", file=sys.stderr)
 
             print("-" * 40, file=sys.stderr)
             print("Initial Status Check:", file=sys.stderr)
-            # Check status since 1 minute ago
+            
+            # Check status since 1 minute ago (or approximate start of trigger)
             since_time = (datetime.now(timezone.utc).replace(second=0, microsecond=0)).isoformat()
-            self.check_status(pr_number, since_iso=None) # Check all recent items, or just all items to be safe? 
-            # Better to show everything relevant.
-            print("-" * 40, file=sys.stderr)
-            print("To check again later, run: pr_skill.py status " + str(pr_number), file=sys.stderr)
+            status_data = self.check_status(pr_number, since_iso=None, return_data=True)
+            
+            return {
+                "status": "success",
+                "message": "Triggered reviews and performed initial status check.",
+                "triggered_bots": triggered_bots,
+                "initial_status": status_data
+            }
 
         except GithubException as e:
-            print(f"GitHub API Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            print_error(f"GitHub API Error: {e}")
 
-    def check_status(self, pr_number, since_iso=None):
+    def check_status(self, pr_number, since_iso=None, return_data=False):
         """
         Stateless check of PR feedback using PyGithub.
-        Returns JSON summary of status.
+        Returns and/or prints JSON summary of status.
         """
         def get_aware_utc_datetime(dt_obj):
             """Converts a naive datetime from PyGithub into a timezone-aware one."""
@@ -168,7 +182,7 @@ class ReviewManager:
         try:
             pr = self.repo.get_pull(pr_number)
             
-            since_dt = datetime.min.replace(tzinfo=timezone.utc)
+            since_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
             if since_iso:
                 try:
                     if since_iso.endswith('Z'):
@@ -183,8 +197,6 @@ class ReviewManager:
             new_feedback = []
             
             # 1. Issue Comments (General)
-            # PyGithub PullRequest.get_issue_comments() doesn't support 'since'.
-            # We must use the Issue object to filter by date server-side.
             issue = self.repo.get_issue(pr_number)
             for comment in issue.get_comments(since=since_dt):
                 comment_dt = get_aware_utc_datetime(comment.created_at)
@@ -222,18 +234,24 @@ class ReviewManager:
                         "created_at": review.submitted_at.isoformat()
                     })
             
-            # Return JSON
             output = {
+                "status": "success",
                 "pr_number": pr_number,
                 "checked_at_utc": datetime.now(timezone.utc).isoformat(),
                 "new_item_count": len(new_feedback),
                 "items": new_feedback
             }
-            print(json.dumps(output, indent=2))
+            
+            if return_data:
+                return output
+            else:
+                print_json(output)
+                return output
 
         except GithubException as e:
-            print(f"GitHub API Error: {e}", file=sys.stderr)
-            sys.exit(1)
+            if return_data:
+                raise e
+            print_error(f"GitHub API Error: {e}")
 
 
 def main():
@@ -243,6 +261,7 @@ def main():
     # Trigger Review
     p_trigger = subparsers.add_parser("trigger_review", help="Trigger reviews safely")
     p_trigger.add_argument("pr_number", type=int)
+    p_trigger.add_argument("--wait", type=int, default=60, help="Seconds to wait for initial feedback (default: 60)")
 
     # Status
     p_status = subparsers.add_parser("status", help="Check review status")
@@ -253,16 +272,22 @@ def main():
     p_push = subparsers.add_parser("safe_push", help="Push changes safely")
 
     args = parser.parse_args()
-    mgr = ReviewManager()
+    
+    try:
+        mgr = ReviewManager()
 
-    if args.command == "trigger_review":
-        mgr.trigger_review(args.pr_number)
-    elif args.command == "status":
-        mgr.check_status(args.pr_number, args.since)
-    elif args.command == "safe_push":
-        success = mgr.safe_push()
-        if not success:
-            sys.exit(1)
+        if args.command == "trigger_review":
+            result = mgr.trigger_review(args.pr_number, wait_seconds=args.wait)
+            print_json(result)
+        elif args.command == "status":
+            mgr.check_status(args.pr_number, args.since)
+        elif args.command == "safe_push":
+            result = mgr.safe_push()
+            print_json(result)
+            if result["status"] != "success":
+                sys.exit(1)
+    except Exception as e:
+        print_error(f"Unexpected error: {str(e)}")
 
 if __name__ == "__main__":
     main()

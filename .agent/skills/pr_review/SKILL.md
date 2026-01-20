@@ -14,6 +14,11 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 > 3. Only trigger reviews after a fresh push, not repeatedly.
 > Loop: `Push → Status Check → Analyze → Fix → Repeat`.
 
+## Agent Instructions
+
+**ALWAYS** parse the JSON output from these tools. 
+- If `status` is `error`, STOP and address the issue (e.g., commit changes, push branch).
+- If `status` is `success`, proceed based on the `message` or `items`.
 
 ## Tools
 
@@ -21,7 +26,7 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 
 Safely pushes local changes to the remote repository.
 *   **Enforces**: Checks for uncommitted changes and unpushed commits.
-*   **Returns**: Boolean success status.
+*   **Returns**: JSON object with `status` ("success" or "error") and `message`.
 
 ```bash
 python3 .agent/skills/pr_review/pr_skill.py safe_push
@@ -30,12 +35,14 @@ python3 .agent/skills/pr_review/pr_skill.py safe_push
 ### `trigger_review`
 
 Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc.) on a specific PR.
-*   **Parameters**: `pr_number` (integer)
-*   **Constraints**: AUTO-RUNS `safe_push` checks before triggering. If the branch is not pushed, it FAILS and instructs you to push.
-*   **Output**: Success message or error instruction.
+*   **Parameters**: 
+    *   `pr_number` (integer)
+    *   `--wait` (integer, optional): Seconds to wait for initial feedback (default: 60).
+*   **Constraints**: AUTO-RUNS `safe_push` checks before triggering. If the branch is not pushed, it FAILS (returns error JSON).
+*   **Output**: JSON object with `status`, `message`, `triggered_bots`, and `initial_status`.
 
 ```bash
-python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER>
+python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER> --wait 60
 ```
 
 ### `status`
@@ -56,17 +63,20 @@ python3 .agent/skills/pr_review/pr_skill.py status <PR_NUMBER> --since <ISO_TIME
 1. **Push Changes**:
    ```bash
    python3 .agent/skills/pr_review/pr_skill.py safe_push
+   # output: {"status": "success", "message": "Push successful."}
    ```
 
 2. **Trigger Review**:
    ```bash
    python3 .agent/skills/pr_review/pr_skill.py trigger_review 123
+   # output: {"status": "success", "message": "...", "initial_status": {...}}
    ```
 
 3. **Check Status** (after waiting 2-3 minutes):
    ```bash
    python3 .agent/skills/pr_review/pr_skill.py status 123 --since 2024-01-01T12:00:00Z
+   # output: {"status": "success", "items": [...], ...}
    ```
 
 > [!TIP]
-> For reliable, non-blocking status polling, use **GitHub MCP tools** (`mcp_github_pull_request_read`) instead of the script.
+> For reliable, non-blocking status polling, you can also use **GitHub MCP tools** (`mcp_github_pull_request_read`) directly if you prefer, but this script provides a unified JSON interface.
