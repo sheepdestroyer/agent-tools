@@ -146,7 +146,7 @@ class ReviewManager:
                     else:
                         return False, f"Unexpected git rev-list output: '{rev_list.stdout.strip()}'"
                 except ValueError:
-                     return False, f"Failed to parse git rev-list output: '{rev_list.stdout.strip()}'"
+                    return False, f"Failed to parse git rev-list output: '{rev_list.stdout.strip()}'"
             else:
                 # Fallback/General error
                 return False, f"Failed to check divergence: {rev_list.stderr.strip()}"
