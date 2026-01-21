@@ -55,8 +55,8 @@ class ReviewManager:
             self.g = Github(auth=Auth.Token(self.token))
             self.repo = self._detect_repo()
             self._ensure_workspace()
-        except Exception as e:
-            print_error(f"Initialization failed: {str(e)}")
+        except (GithubException, OSError, ValueError) as e:
+            print_error(f"Initialization failed: {e}")
 
     def _log(self, message):
         """Audit logging to stderr with timestamp."""
@@ -124,7 +124,7 @@ class ReviewManager:
             # Check if upstream is configured
             upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
             if upstream_proc.returncode != 0:
-                 return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
+                return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
             
             # Check for unpushed commits
             # git diff --quiet HEAD @{u} returns 0 if no diff, 1 if diff.
@@ -322,7 +322,7 @@ def main():
     p_status.add_argument("--since", help="ISO 8601 timestamp")
 
     # Safe Push
-    p_push = subparsers.add_parser("safe_push", help="Push changes safely")
+    _p_push = subparsers.add_parser("safe_push", help="Push changes safely")
 
     args = parser.parse_args()
     
