@@ -81,7 +81,7 @@ class ReviewManager:
             
             # Extract owner/repo using regex
             # Matches: https://github.com/owner/repo.git, git@github.com:owner/repo.git, etc.
-            match = re.search(r"github\.com[:/]([^/.]+)/([^/.]+?)(?:\.git)?$", url)
+            match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url)
             if match:
                 full_name = f"{match.group(1)}/{match.group(2)}"
                 return self.g.get_repo(full_name)
@@ -142,8 +142,8 @@ class ReviewManager:
                     if behind > 0:
                         return False, f"Local branch '{branch}' is behind upstream by {behind} commit(s). Please pull."
             else:
-                 # Fallback/General error
-                 return False, f"Failed to check divergence: {rev_list.stderr.strip()}"
+                # Fallback/General error
+                return False, f"Failed to check divergence: {rev_list.stderr.strip()}"
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             return False, f"Git check failed: {str(e)}"
             
@@ -160,6 +160,7 @@ class ReviewManager:
             return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
 
         # Check upstream configuration (optional but good for safety)
+        branch = "unknown"
         try:
             branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT).stdout.strip()
             # Just check if we can get upstream, if not we might need -u
@@ -176,7 +177,7 @@ class ReviewManager:
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             return {"status": "error", "message": f"Push failed or timed out: {e}. You may need to pull changes first or check your connection."}
 
-    def trigger_review(self, pr_number, wait_seconds=60):
+    def trigger_review(self, pr_number, wait_seconds=180):
         """
         1. Checks local state (Hard Constraint).
         2. Post comments to trigger bots.
@@ -209,9 +210,9 @@ class ReviewManager:
                 self._log("-" * 40)
                 self._log(f"Auto-waiting {wait_seconds} seconds for initial feedback to ensure loop continuity...")
                 try:
-                     time.sleep(wait_seconds)
+                    time.sleep(wait_seconds)
                 except KeyboardInterrupt:
-                     self._log("\nWait interrupted. checking status immediately...")
+                    self._log("\nWait interrupted. checking status immediately...")
 
                 self._log("-" * 40)
                 self._log("Initial Status Check:")
