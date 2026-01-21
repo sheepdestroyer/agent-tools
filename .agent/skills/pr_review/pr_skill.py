@@ -56,7 +56,17 @@ class ReviewManager:
             self.repo = self._detect_repo()
             self._ensure_workspace()
         except (GithubException, OSError, ValueError) as e:
-            print_error(f"Initialization failed: {e}")
+            # Mask token if present in error
+            safe_msg = str(e)
+            if self.token:
+                safe_msg = safe_msg.replace(self.token, "********")
+            print_error(f"Initialization failed: {safe_msg}")
+
+    def _mask_token(self, text):
+        """Redacts the GitHub token from the given text."""
+        if not self.token or not text:
+            return text
+        return text.replace(self.token, "********")
 
     def _log(self, message):
         """Audit logging to stderr with timestamp."""
@@ -151,7 +161,7 @@ class ReviewManager:
                 # Fallback/General error
                 return False, f"Failed to check divergence: {rev_list.stderr.strip()}"
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-            return False, f"Git check failed: {str(e)}"
+            return False, f"Git check failed: {self._mask_token(str(e))}"
             
         return True, "Code is clean and pushed."
 
@@ -182,7 +192,7 @@ class ReviewManager:
             return {"status": "success", "message": "Push successful."}
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             # Mask token if present in error
-            safe_err = str(e).replace(self.token, "********") if self.token else str(e)
+            safe_err = self._mask_token(str(e))
             return {"status": "error", "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection."}
 
     def trigger_review(self, pr_number, wait_seconds=180):
@@ -281,7 +291,8 @@ class ReviewManager:
                 })
 
             # 2. Review Comments (Inline)
-            for comment in pr.get_review_comments(since=since_dt):
+            # Fetch all review comments to ensure we catch edits (since param might only check creation time)
+            for comment in pr.get_review_comments():
                 # Use updated_at to catch edits
                 comment_dt = get_aware_utc_datetime(comment.updated_at)
                 if comment_dt and comment_dt > since_dt:
