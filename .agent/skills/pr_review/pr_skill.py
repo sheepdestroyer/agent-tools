@@ -127,7 +127,8 @@ class ReviewManager:
         # 2. Check if pushed to upstream
         try:
             # Fetch latest state from remote for accurate comparison
-            subprocess.run(["git", "fetch"], capture_output=True, check=True, timeout=GIT_FETCH_TIMEOUT)
+            # Redirect output to stderr so prompts/hangs are visible in logs
+            subprocess.run(["git", "fetch"], check=True, timeout=GIT_FETCH_TIMEOUT, stdout=sys.stderr, stderr=sys.stderr)
 
             # Get current branch
             branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT).stdout.strip()
@@ -139,7 +140,7 @@ class ReviewManager:
             
             # Check for unpushed commits and upstream changes
             # git rev-list --left-right --count @{u}...HEAD
-            # Output: "behind  ahead" (e.g., "0  1")
+            # Output: "behind  ahead" (left=@{u}, right=HEAD)
             rev_list = subprocess.run(
                 ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"], 
                 capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT
