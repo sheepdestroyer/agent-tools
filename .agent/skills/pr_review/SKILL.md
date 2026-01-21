@@ -37,12 +37,12 @@ python3 .agent/skills/pr_review/pr_skill.py safe_push
 Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc.) on a specific PR.
 *   **Parameters**: 
     *   `pr_number` (integer)
-    *   `--wait` (integer, optional): Seconds to wait for initial feedback (default: 60).
+    *   `--wait` (integer, optional): Seconds to wait for initial feedback (default: 180).
 *   **Constraints**: AUTO-RUNS `safe_push` checks before triggering. If the branch is not pushed, it FAILS (returns error JSON).
 *   **Output**: JSON object with `status`, `message`, `triggered_bots`, and `initial_status`.
 
 ```bash
-python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER> --wait 60
+python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER> --wait 180
 ```
 
 ### `status`

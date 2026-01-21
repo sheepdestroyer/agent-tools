@@ -48,7 +48,7 @@ class ReviewManager:
             try:
                 res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True, timeout=GH_AUTH_TIMEOUT)
                 self.token = res.stdout.strip()
-            except (subprocess.CalledProcessError, FileNotFoundError):
+            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                 print_error("No GITHUB_TOKEN found and 'gh' command failed or is not installed.")
         
         try:
@@ -126,11 +126,24 @@ class ReviewManager:
             if upstream_proc.returncode != 0:
                 return False, f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."
             
-            # Check for unpushed commits
-            # git diff --quiet HEAD @{u} returns 0 if no diff, 1 if diff.
-            diff = subprocess.run(["git", "diff", "--quiet", "HEAD", "@{u}"], capture_output=True, timeout=GIT_FETCH_TIMEOUT)
-            if diff.returncode != 0:
-                return False, f"Local branch '{branch}' has unpushed changes. You MUST push before triggering a review."
+            # Check for unpushed commits and upstream changes
+            # git rev-list --left-right --count @{u}...HEAD
+            # Output: "behind  ahead" (e.g., "0  1")
+            rev_list = subprocess.run(
+                ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"], 
+                capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT
+            )
+            if rev_list.returncode == 0:
+                parts = rev_list.stdout.split()
+                if len(parts) == 2:
+                    behind, ahead = int(parts[0]), int(parts[1])
+                    if ahead > 0:
+                        return False, f"Local branch '{branch}' has {ahead} unpushed commit(s). You MUST push before triggering a review."
+                    if behind > 0:
+                        return False, f"Local branch '{branch}' is behind upstream by {behind} commit(s). Please pull."
+            else:
+                 # Fallback/General error
+                 return False, f"Failed to check divergence: {rev_list.stderr.strip()}"
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             return False, f"Git check failed: {str(e)}"
             
@@ -314,7 +327,7 @@ def main():
     # Trigger Review
     p_trigger = subparsers.add_parser("trigger_review", help="Trigger reviews safely")
     p_trigger.add_argument("pr_number", type=int)
-    p_trigger.add_argument("--wait", type=int, default=60, help="Seconds to wait for initial feedback (default: 60)")
+    p_trigger.add_argument("--wait", type=int, default=180, help="Seconds to wait for initial feedback (default: 180)")
 
     # Status
     p_status = subparsers.add_parser("status", help="Check review status")
@@ -322,7 +335,7 @@ def main():
     p_status.add_argument("--since", help="ISO 8601 timestamp")
 
     # Safe Push
-    _p_push = subparsers.add_parser("safe_push", help="Push changes safely")
+    subparsers.add_parser("safe_push", help="Push changes safely")
 
     args = parser.parse_args()
     
