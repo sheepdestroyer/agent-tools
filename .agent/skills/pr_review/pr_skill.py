@@ -61,7 +61,8 @@ class ReviewManager:
     def _log(self, message):
         """Audit logging to stderr with timestamp."""
         timestamp = datetime.now(timezone.utc).isoformat()
-        print(f"[{timestamp}] {message}", file=sys.stderr)
+        # Tag logs as [AUDIT] for compliance and easier filtering
+        print(f"[{timestamp}] [AUDIT] {message}", file=sys.stderr)
 
     def _ensure_workspace(self):
         """Enforces Rule 3: Artifact Hygiene. Creates agent-workspace/ if missing."""
@@ -134,13 +135,18 @@ class ReviewManager:
                 capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT
             )
             if rev_list.returncode == 0:
-                parts = rev_list.stdout.split()
-                if len(parts) == 2:
-                    behind, ahead = int(parts[0]), int(parts[1])
-                    if ahead > 0:
-                        return False, f"Local branch '{branch}' has {ahead} unpushed commit(s). You MUST push before triggering a review."
-                    if behind > 0:
-                        return False, f"Local branch '{branch}' is behind upstream by {behind} commit(s). Please pull."
+                try:
+                    parts = rev_list.stdout.split()
+                    if len(parts) == 2:
+                        behind, ahead = int(parts[0]), int(parts[1])
+                        if ahead > 0:
+                            return False, f"Local branch '{branch}' has {ahead} unpushed commit(s). You MUST push before triggering a review."
+                        if behind > 0:
+                            return False, f"Local branch '{branch}' is behind upstream by {behind} commit(s). Please pull."
+                    else:
+                        return False, f"Unexpected git rev-list output: '{rev_list.stdout.strip()}'"
+                except ValueError:
+                     return False, f"Failed to parse git rev-list output: '{rev_list.stdout.strip()}'"
             else:
                 # Fallback/General error
                 return False, f"Failed to check divergence: {rev_list.stderr.strip()}"
@@ -175,7 +181,9 @@ class ReviewManager:
             subprocess.run(["git", "push"], check=True, timeout=GIT_PUSH_TIMEOUT)
             return {"status": "success", "message": "Push successful."}
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-            return {"status": "error", "message": f"Push failed or timed out: {e}. You may need to pull changes first or check your connection."}
+            # Mask token if present in error
+            safe_err = str(e).replace(self.token, "********") if self.token else str(e)
+            return {"status": "error", "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection."}
 
     def trigger_review(self, pr_number, wait_seconds=180):
         """
@@ -212,7 +220,7 @@ class ReviewManager:
                 try:
                     time.sleep(wait_seconds)
                 except KeyboardInterrupt:
-                    self._log("\nWait interrupted. checking status immediately...")
+                    self._log("\nWait interrupted. Checking status immediately...")
 
                 self._log("-" * 40)
                 self._log("Initial Status Check:")
@@ -255,7 +263,8 @@ class ReviewManager:
                     if since_dt.tzinfo is None:
                         since_dt = since_dt.replace(tzinfo=timezone.utc)
                 except ValueError:
-                    print(f"Warning: Invalid timestamp {since_iso}, ignoring.", file=sys.stderr)
+                    # Log warning but continue
+                    print(f"[{datetime.now(timezone.utc).isoformat()}] [AUDIT] Warning: Invalid timestamp {since_iso}, ignoring.", file=sys.stderr)
 
             # Fetch comments (paginated by PyGithub automatically)
             new_feedback = []
@@ -354,6 +363,7 @@ def main():
             if result["status"] != "success":
                 sys.exit(1)
     except Exception as e:
+        # Generic catch-all to prevent raw tracebacks, but include string for debug
         print_error(f"Unexpected error: {str(e)}")
 
 if __name__ == "__main__":
