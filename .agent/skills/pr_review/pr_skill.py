@@ -152,9 +152,9 @@ class ReviewManager:
             # Just check if we can get upstream, if not we might need -u
             subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT, check=True)
         except subprocess.CalledProcessError:
-             return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
+            return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
         except subprocess.TimeoutExpired:
-             return {"status": "error", "message": "Git operations timed out."}
+            return {"status": "error", "message": "Git operations timed out."}
 
         # Attempt push
         try:
