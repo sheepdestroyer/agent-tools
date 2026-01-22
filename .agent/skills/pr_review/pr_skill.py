@@ -265,18 +265,19 @@ class ReviewManager:
                 validation_reviewer=validation_reviewer
             )
             
-            # Check if main reviewer has responded
-            main_reviewer_info = status_data.get("main_reviewer", {})
-            main_reviewer_state = main_reviewer_info.get("state", "PENDING")
-            
-            # Check for any feedback from main reviewer in items
-            main_reviewer_has_feedback = any(
+            # Check for any NEW feedback from main reviewer in items (filtered by since_iso)
+            # IMPORTANT: Do NOT check main_reviewer_state here - that reflects ALL historical reviews
+            # and would cause immediate exit if main reviewer ever commented before.
+            # We only want to exit when the main reviewer has posted NEW feedback since trigger.
+            main_reviewer_has_new_feedback = any(
                 item.get("user") == validation_reviewer 
                 for item in status_data.get("items", [])
             )
             
-            if main_reviewer_has_feedback or main_reviewer_state not in ["PENDING", None]:
-                self._log(f"Main reviewer ({validation_reviewer}) has responded with state: {main_reviewer_state}")
+            if main_reviewer_has_new_feedback:
+                main_reviewer_info = status_data.get("main_reviewer", {})
+                main_reviewer_state = main_reviewer_info.get("state", "PENDING")
+                self._log(f"Main reviewer ({validation_reviewer}) has NEW feedback with state: {main_reviewer_state}")
                 return status_data
             
             # Not yet - wait and poll again
