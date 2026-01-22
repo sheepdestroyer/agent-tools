@@ -504,10 +504,20 @@ class ReviewManager:
                 next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
             elif has_new_main_reviewer_comments:
                  next_step = f"New comments from {validation_reviewer} after approval. ANALYZE feedback -> FIX code -> SAFE_PUSH."
+            elif main_reviewer_state == "APPROVED":
+                 # Check if there's any OTHER feedback besides the main reviewer's approval
+                 other_feedback = [
+                     item for item in new_feedback
+                     if not (item.get("user") == validation_reviewer 
+                             and item.get("type") == "review_summary" 
+                             and item.get("state") == "APPROVED")
+                 ]
+                 if other_feedback:
+                     next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+                 else:
+                     next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
             elif new_feedback:
                  next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
-            elif main_reviewer_state == "APPROVED":
-                 next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
             else:
                  next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again."
             
