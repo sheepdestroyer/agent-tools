@@ -248,8 +248,8 @@ class ReviewManager:
         
         Returns the status data from check_status once main reviewer feedback is detected.
         """
-        max_attempts = max_attempts or POLL_MAX_ATTEMPTS
-        poll_interval = poll_interval or POLL_INTERVAL_SECONDS
+        max_attempts = POLL_MAX_ATTEMPTS if max_attempts is None else max_attempts
+        poll_interval = POLL_INTERVAL_SECONDS if poll_interval is None else poll_interval
         
         # Initialize status_data to handle edge case where max_attempts is 0 or loop is interrupted
         status_data = None
@@ -296,12 +296,10 @@ class ReviewManager:
             status_data = {
                 "status": "error",
                 "message": "Polling failed - no status data available.",
-                "polling_timeout": True,
-                "next_step": f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
             }
-        else:
-            status_data["polling_timeout"] = True
-            status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
+        
+        status_data["polling_timeout"] = True
+        status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
         return status_data
 
     def trigger_review(self, pr_number, wait_seconds=180, validation_reviewer="gemini-code-assist[bot]"):
@@ -448,18 +446,22 @@ class ReviewManager:
             )
             
             # Check Main Reviewer Status
+            # Track latest state AND most recent approval separately
+            # (fixes bug where APPROVED -> COMMENTED leaves approval_dt as None)
             main_reviewer_state = "PENDING"
             main_reviewer_last_approval_dt = None
 
-            # Iterate REVERSE to get latest review state from main reviewer
+            # First pass: find the most recent approval timestamp from main reviewer
             for review in reversed(reviews):
-                 if review.user.login == validation_reviewer:
-                      main_reviewer_state = review.state
-                      if review.state == "APPROVED":
-                          # review.submitted_at is a datetime object from PyGithub
-                          # Ensure it is timezone-aware UTC
-                          main_reviewer_last_approval_dt = get_aware_utc_datetime(review.submitted_at)
-                      break
+                if review.user.login == validation_reviewer and review.state == "APPROVED":
+                    main_reviewer_last_approval_dt = get_aware_utc_datetime(review.submitted_at)
+                    break
+            
+            # Second pass: find the latest review state from main reviewer
+            for review in reversed(reviews):
+                if review.user.login == validation_reviewer:
+                    main_reviewer_state = review.state
+                    break
             
             # Check for comments from main_reviewer AFTER approval
             has_new_main_reviewer_comments = False
@@ -476,14 +478,9 @@ class ReviewManager:
                         created_at_val = item.get("created_at")
                         if created_at_val:
                             try:
-                                # Ensure we parse string to datetime BEFORE helper if it's a string
-                                if isinstance(created_at_val, str):
-                                    # Handle Z suffix manually if needed, or let fromisoformat handle it (Python 3.11+)
-                                    # But to be safe and consistent with previous fix:
-                                    dt_val = datetime.fromisoformat(created_at_val.replace("Z", "+00:00"))
-                                else:
-                                    dt_val = created_at_val
-                                
+                                # created_at is always an ISO string from our processing
+                                # Handle Z suffix for Python < 3.11 compatibility
+                                dt_val = datetime.fromisoformat(created_at_val.replace("Z", "+00:00"))
                                 comment_dt = get_aware_utc_datetime(dt_val)
                                 
                                 # Use >= to catch comments made at the exact same second
