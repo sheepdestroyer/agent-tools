@@ -277,7 +277,7 @@ class ReviewManager:
             }
 
         except GithubException as e:
-            print_error(f"GitHub API Error: {e}")
+            print_error(f"GitHub API Error: {self._mask_token(str(e))}")
 
     def check_status(self, pr_number, since_iso=None, return_data=False):
         """
@@ -385,7 +385,7 @@ class ReviewManager:
         except GithubException as e:
             if return_data:
                 raise
-            print_error(f"GitHub API Error: {e}")
+            print_error(f"GitHub API Error: {self._mask_token(str(e))}")
 
 
 def main():
