@@ -304,10 +304,11 @@ class ReviewManager:
             status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
         return status_data
 
-    def trigger_review(self, pr_number, wait_seconds=180):
+    def trigger_review(self, pr_number, wait_seconds=180, validation_reviewer="gemini-code-assist[bot]"):
         """
         1. Checks local state (Hard Constraint).
         2. Post comments to trigger bots.
+        3. Polls for main reviewer feedback.
         """
         # Step 1: Enforce Push
         is_safe, msg = self._check_local_state()
@@ -348,7 +349,7 @@ class ReviewManager:
                 status_data = self._poll_for_main_reviewer(
                     pr_number=pr_number,
                     since_iso=start_time.isoformat(),
-                    validation_reviewer="gemini-code-assist[bot]"
+                    validation_reviewer=validation_reviewer
                 )
             else:
                 status_data = {"status": "skipped", "message": "Initial status check skipped due to wait_seconds=0."}
@@ -536,6 +537,7 @@ def main():
     p_trigger = subparsers.add_parser("trigger_review", help="Trigger reviews safely")
     p_trigger.add_argument("pr_number", type=int)
     p_trigger.add_argument("--wait", type=int, default=180, help="Seconds to wait for initial feedback (default: 180)")
+    p_trigger.add_argument("--validation-reviewer", default="gemini-code-assist[bot]", help="Username of the main reviewer that must approve")
 
     # Status
     p_status = subparsers.add_parser("status", help="Check review status")
@@ -552,7 +554,7 @@ def main():
         mgr = ReviewManager()
 
         if args.command == "trigger_review":
-            result = mgr.trigger_review(args.pr_number, wait_seconds=args.wait)
+            result = mgr.trigger_review(args.pr_number, wait_seconds=args.wait, validation_reviewer=args.validation_reviewer)
             print_json(result)
         elif args.command == "status":
             mgr.check_status(args.pr_number, args.since, validation_reviewer=args.validation_reviewer)
