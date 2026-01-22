@@ -111,7 +111,7 @@ class ReviewManager:
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
         except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError, ValueError):
-            raise RuntimeError("Error checking repository context: Ensure 'gh' is installed and you are in a git repository.")
+            raise RuntimeError("Error checking repository context: Ensure 'gh' is installed and you are in a git repository.") from None
 
     def _check_local_state(self):
         """
@@ -179,11 +179,14 @@ class ReviewManager:
         # Check upstream configuration (optional but good for safety)
         branch = "unknown"
         try:
-            branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT).stdout.strip()
-            # Just check if we can get upstream, if not we might need -u
-            subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT, check=True)
-        except subprocess.CalledProcessError:
-            return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
+            branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
+            if branch_proc.returncode != 0:
+                 return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?"}
+            branch = branch_proc.stdout.strip()
+
+            upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
+            if upstream_proc.returncode != 0:
+                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
         except subprocess.TimeoutExpired:
             return {"status": "error", "message": "Git operations timed out."}
 
@@ -296,7 +299,7 @@ class ReviewManager:
             for comment in pr.get_review_comments():
                 # Use updated_at to catch edits
                 comment_dt = get_aware_utc_datetime(comment.updated_at)
-                if comment_dt and comment_dt > since_dt:
+                if comment_dt and comment_dt >= since_dt:
                     new_feedback.append({
                         "type": "inline_comment",
                         "user": comment.user.login,
@@ -311,7 +314,7 @@ class ReviewManager:
             for review in pr.get_reviews():
                 if review.submitted_at: # Ensure submitted_at is not None before processing
                     review_dt = get_aware_utc_datetime(review.submitted_at)
-                    if review_dt and review_dt > since_dt:
+                    if review_dt and review_dt >= since_dt:
                         new_feedback.append({
                             "type": "review_summary",
                             "user": review.user.login,
@@ -336,7 +339,7 @@ class ReviewManager:
 
         except GithubException as e:
             if return_data:
-                raise e
+                raise
             print_error(f"GitHub API Error: {e}")
 
 
@@ -374,6 +377,8 @@ def main():
                 sys.exit(1)
     except Exception as e:
         # Generic catch-all to prevent raw tracebacks, but include string for debug
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         print_error(f"Unexpected error: {str(e)}")
 
 if __name__ == "__main__":
