@@ -30,6 +30,21 @@ GIT_PUSH_TIMEOUT = 60
 GH_AUTH_TIMEOUT = 10
 GH_REPO_VIEW_TIMEOUT = 30
 
+# Polling constants for review feedback
+# Configurable via environment variables
+try:
+    POLL_INTERVAL_SECONDS = max(int(os.environ.get("PR_REVIEW_POLL_INTERVAL", "30")), 1)
+except ValueError:
+    POLL_INTERVAL_SECONDS = 30
+
+try:
+    POLL_MAX_ATTEMPTS = max(int(os.environ.get("PR_REVIEW_POLL_MAX_ATTEMPTS", "20")), 1)
+except ValueError:
+    POLL_MAX_ATTEMPTS = 20
+
+# Default Validation Reviewer (The bot/user that must approve)
+DEFAULT_VALIDATION_REVIEWER = os.environ.get("PR_REVIEW_VALIDATION_REVIEWER", "gemini-code-assist[bot]")
+
 def print_json(data):
     """Helper to print JSON to stdout."""
     print(json.dumps(data, indent=2))
@@ -237,10 +252,78 @@ class ReviewManager:
             safe_err = self._mask_token(str(e))
             return {"status": "error", "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection.", "next_step": "Pull changes, resolve conflicts, and retry safe_push."}
 
-    def trigger_review(self, pr_number, wait_seconds=180):
+    def _poll_for_main_reviewer(self, pr_number, since_iso, validation_reviewer, max_attempts=None, poll_interval=None):
+        """
+        Polls until the main reviewer has provided feedback since the given timestamp.
+        Enforces the Loop Rule: never return until main reviewer responds or timeout.
+        
+        Returns the status data from check_status once main reviewer feedback is detected.
+        """
+        max_attempts = POLL_MAX_ATTEMPTS if max_attempts is None else max_attempts
+        poll_interval = POLL_INTERVAL_SECONDS if poll_interval is None else poll_interval
+        
+        # Initialize status_data to handle edge case where max_attempts is 0 or loop is interrupted
+        status_data = None
+        
+        for attempt in range(1, max_attempts + 1):
+            try:
+                self._log(f"Poll attempt {attempt}/{max_attempts}...")
+                
+                # Get current status
+                status_data = self.check_status(
+                    pr_number, 
+                    since_iso=since_iso, 
+                    return_data=True,
+                    validation_reviewer=validation_reviewer
+                )
+                
+                # Check for any NEW feedback from main reviewer in items (filtered by since_iso)
+                # IMPORTANT: Do NOT check main_reviewer_state here - that reflects ALL historical reviews
+                # and would cause immediate exit if main reviewer ever commented before.
+                # We only want to exit when the main reviewer has posted NEW feedback since trigger.
+                main_reviewer_has_new_feedback = any(
+                    item.get("user") == validation_reviewer 
+                    for item in status_data.get("items", [])
+                )
+                
+                if main_reviewer_has_new_feedback:
+                    main_reviewer_info = status_data.get("main_reviewer", {})
+                    main_reviewer_state = main_reviewer_info.get("state", "PENDING")
+                    self._log(f"Main reviewer ({validation_reviewer}) has NEW feedback with state: {main_reviewer_state}")
+                    return status_data
+                
+                # Not yet - wait and poll again
+                if attempt < max_attempts:
+                    self._log(f"Main reviewer has not responded yet. Waiting {poll_interval}s before next poll...")
+                    time.sleep(poll_interval)
+            except KeyboardInterrupt:
+                self._log("\nPolling interrupted by user.")
+                # Return distinct status for interruption vs timeout
+                if status_data is None:
+                    status_data = {"status": "interrupted", "message": "Polling interrupted before first check."}
+                status_data["polling_interrupted"] = True
+                status_data["next_step"] = "INTERRUPTED: Polling cancelled by user. Resume with 'status' command."
+                return status_data
+        
+        # Timeout - return status with warning
+        self._log(f"WARNING: Main reviewer did not respond within {max_attempts * poll_interval}s timeout.")
+        
+        # Handle case where no polls were made (e.g., max_attempts was 0)
+        if status_data is None:
+            status_data = {
+                "status": "error",
+                "message": "Polling failed - no status data available.",
+            }
+        
+        status_data["polling_timeout"] = True
+        status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
+        return status_data
+
+    def trigger_review(self, pr_number, wait_seconds=180, validation_reviewer=DEFAULT_VALIDATION_REVIEWER):
         """
         1. Checks local state (Hard Constraint).
         2. Post comments to trigger bots.
+        3. Polls for main reviewer feedback.
         """
         # Step 1: Enforce Push
         is_safe, msg = self._check_local_state()
@@ -265,29 +348,41 @@ class ReviewManager:
                 
             self._log("All review bots triggered successfully.")
             
-            # Step 3: Auto-Wait and Check (Enforce Loop)
+            # Step 3: Poll for Main Reviewer Response (Enforce Loop Rule)
             if wait_seconds > 0:
                 self._log("-" * 40)
-                self._log(f"Auto-waiting {wait_seconds} seconds for initial feedback to ensure loop continuity...")
+                self._log(f"Auto-waiting {wait_seconds} seconds for initial bot responses...")
                 try:
                     time.sleep(wait_seconds)
                 except KeyboardInterrupt:
                     self._log("\nWait interrupted. Checking status immediately...")
 
                 self._log("-" * 40)
-                self._log("Initial Status Check:")
+                self._log("Polling for main reviewer feedback (enforcing Loop Rule)...")
                 
-                # Check status since start of trigger
-                status_data = self.check_status(pr_number, since_iso=start_time.isoformat(), return_data=True)
+                # Poll until main reviewer responds or timeout
+                status_data = self._poll_for_main_reviewer(
+                    pr_number=pr_number,
+                    since_iso=start_time.isoformat(),
+                    validation_reviewer=validation_reviewer
+                )
             else:
                 status_data = {"status": "skipped", "message": "Initial status check skipped due to wait_seconds=0."}
             
+            message = "Triggered reviews."
+            if wait_seconds > 0 and not status_data.get("polling_interrupted"):
+                message = "Triggered reviews and polled for main reviewer feedback."
+            elif status_data.get("polling_interrupted"):
+                message = "Triggered reviews; polling was interrupted."
+            elif wait_seconds <= 0:
+                message = "Triggered reviews; polling was skipped."
+            
             return {
                 "status": "success",
-                "message": "Triggered reviews and performed initial status check.",
+                "message": message,
                 "triggered_bots": triggered_bots,
                 "initial_status": status_data,
-                "next_step": "Wait for 'wait_seconds' then run 'status' to check for feedback."
+                "next_step": status_data.get("next_step", "Run 'status' to check for feedback.")
             }
 
         except GithubException as e:
@@ -348,6 +443,7 @@ class ReviewManager:
                         "body": comment.body,
                         "path": comment.path,
                         "line": comment.line,
+                        "created_at": get_aware_utc_datetime(comment.created_at).isoformat() if comment.created_at else None,
                         "updated_at": comment_dt.isoformat(),
                         "url": comment.html_url
                     })
@@ -375,17 +471,72 @@ class ReviewManager:
             )
             
             # Check Main Reviewer Status
+            # Track latest state AND most recent approval separately
+            # (fixes bug where APPROVED -> COMMENTED leaves approval_dt as None)
             main_reviewer_state = "PENDING"
-            # Iterate REVERSE to get latest review state from main reviewer
-            for review in reversed(reviews):
-                 if review.user.login == validation_reviewer:
-                      main_reviewer_state = review.state
-                      break
+            main_reviewer_last_approval_dt = None
 
-            if main_reviewer_state == "APPROVED" and not has_changes_requested:
-                 next_step = "Ready to Merge. (Main Reviewer Approved)"
-            elif has_changes_requested:
+            # Single pass: find latest state AND most recent approval timestamp
+            found_latest_state = False
+            for review in reversed(reviews):
+                if review.user.login == validation_reviewer:
+                    if not found_latest_state:
+                        main_reviewer_state = review.state
+                        found_latest_state = True
+                    
+                    if main_reviewer_last_approval_dt is None and review.state == "APPROVED":
+                        main_reviewer_last_approval_dt = get_aware_utc_datetime(review.submitted_at)
+                    
+                    # Exit early if both are found
+                    if found_latest_state and main_reviewer_last_approval_dt is not None:
+                        break
+            
+            # Check for comments from main_reviewer AFTER approval
+            # Note: Only check if approval exists, not if current state is APPROVED
+            # (fixes bug where APPROVED -> COMMENTED was not detected)
+            has_new_main_reviewer_comments = False
+            if main_reviewer_last_approval_dt:
+                for item in new_feedback:
+                    # Check for issue_comment, inline_comment, OR review comments (state=COMMENTED)
+                    is_main_reviewer = item.get("user") == validation_reviewer
+                    is_comment = item.get("type") in ["issue_comment", "inline_comment"]
+                    is_review_comment = item.get("type") == "review_summary" and item.get("state") == "COMMENTED"
+                    
+                    if is_main_reviewer and (is_comment or is_review_comment):
+                        # Use helper for consistent parsing
+                        # Only use created_at to avoid treating edits (updated_at) of old comments as new feedback
+                        created_at_val = item.get("created_at")
+                        if created_at_val:
+                            try:
+                                # created_at is always an ISO string from our processing
+                                # Handle Z suffix for Python < 3.11 compatibility
+                                dt_val = datetime.fromisoformat(created_at_val.replace("Z", "+00:00"))
+                                comment_dt = get_aware_utc_datetime(dt_val)
+                                
+                                # Use >= to catch comments made at the exact same second
+                                if comment_dt >= main_reviewer_last_approval_dt:
+                                    has_new_main_reviewer_comments = True
+                                    break
+                            except (ValueError, TypeError) as e:
+                                self._log(f"Warning: Could not parse date '{created_at_val}'. Error: {e}. Skipping item.")
+                                continue
+
+            if has_changes_requested:
                 next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
+            elif has_new_main_reviewer_comments:
+                 next_step = f"New comments from {validation_reviewer} after approval. ANALYZE feedback -> FIX code -> SAFE_PUSH."
+            elif main_reviewer_state == "APPROVED":
+                 # Check if there's any OTHER feedback besides the main reviewer's approval
+                 other_feedback = [
+                     item for item in new_feedback
+                     if not (item.get("user") == validation_reviewer 
+                             and item.get("type") == "review_summary" 
+                             and item.get("state") == "APPROVED")
+                 ]
+                 if other_feedback:
+                     next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+                 else:
+                     next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
             elif new_feedback:
                  next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
             else:
@@ -424,12 +575,13 @@ def main():
     p_trigger = subparsers.add_parser("trigger_review", help="Trigger reviews safely")
     p_trigger.add_argument("pr_number", type=int)
     p_trigger.add_argument("--wait", type=int, default=180, help="Seconds to wait for initial feedback (default: 180)")
+    p_trigger.add_argument("--validation-reviewer", default=DEFAULT_VALIDATION_REVIEWER, help="Username of the main reviewer that must approve")
 
     # Status
     p_status = subparsers.add_parser("status", help="Check review status")
     p_status.add_argument("pr_number", type=int)
     p_status.add_argument("--since", help="ISO 8601 timestamp")
-    p_status.add_argument("--validation-reviewer", default="gemini-code-assist[bot]", help="Username of the main reviewer that must approve")
+    p_status.add_argument("--validation-reviewer", default=DEFAULT_VALIDATION_REVIEWER, help="Username of the main reviewer that must approve")
 
     # Safe Push
     subparsers.add_parser("safe_push", help="Push changes safely")
@@ -440,7 +592,7 @@ def main():
         mgr = ReviewManager()
 
         if args.command == "trigger_review":
-            result = mgr.trigger_review(args.pr_number, wait_seconds=args.wait)
+            result = mgr.trigger_review(args.pr_number, wait_seconds=args.wait, validation_reviewer=args.validation_reviewer)
             print_json(result)
         elif args.command == "status":
             mgr.check_status(args.pr_number, args.since, validation_reviewer=args.validation_reviewer)
