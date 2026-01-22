@@ -376,16 +376,32 @@ class ReviewManager:
             
             # Check Main Reviewer Status
             main_reviewer_state = "PENDING"
+            main_reviewer_last_approval_dt = None
+
             # Iterate REVERSE to get latest review state from main reviewer
             for review in reversed(reviews):
                  if review.user.login == validation_reviewer:
                       main_reviewer_state = review.state
+                      if review.state == "APPROVED":
+                          main_reviewer_last_approval_dt = datetime.fromisoformat(review.created_at)
                       break
+            
+            # Check for comments from main_reviewer AFTER approval
+            has_new_main_reviewer_comments = False
+            if main_reviewer_state == "APPROVED" and main_reviewer_last_approval_dt:
+                for item in new_feedback:
+                    if item.get("user") == validation_reviewer and item.get("type") in ["issue_comment", "inline_comment"]:
+                        comment_dt = datetime.fromisoformat(item["created_at"])
+                        if comment_dt > main_reviewer_last_approval_dt:
+                            has_new_main_reviewer_comments = True
+                            break
 
-            if main_reviewer_state == "APPROVED" and not has_changes_requested:
-                 next_step = "Ready to Merge. (Main Reviewer Approved)"
+            if main_reviewer_state == "APPROVED" and not has_changes_requested and not has_new_main_reviewer_comments:
+                 next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
             elif has_changes_requested:
                 next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
+            elif has_new_main_reviewer_comments:
+                 next_step = f"New comments from {validation_reviewer} after approval. ANALYZE feedback -> FIX code -> SAFE_PUSH."
             elif new_feedback:
                  next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
             else:

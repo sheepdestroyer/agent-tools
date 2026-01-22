@@ -14,11 +14,18 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 > 3. Only trigger reviews after a fresh push, not repeatedly.
 > Loop: `Push → Status Check → Analyze → Fix → Repeat`.
 
+> [!CAUTION]
+> **PROHIBITED ACTIONS**:
+> - **NEVER** merge a PR autonomously.
+> - **NEVER** close a PR autonomously.
+> - **NEVER** delete a PR branch autonomously.
+> When validation is complete, **Notify the User** to perform the merge.
+
 ## Agent Instructions
 
 **ALWAYS** parse the JSON output from these tools. 
 - If `status` is `error`, STOP and address the issue (e.g., commit changes, push branch).
-- If `status` is `success`, proceed based on the `message` or `items`.
+- If `next_step` contains "DO NOT MERGE", **Notify the User** and exit.
 
 ## Tools
 
