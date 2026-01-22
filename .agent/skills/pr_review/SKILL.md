@@ -47,6 +47,7 @@ Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc
   *   `pr_number` (integer)
   *   `--wait` (integer, optional): Seconds to wait for initial feedback (default: 180).
 *   **Constraints**: Validates local state (clean & pushed) before triggering. If checks fail, it returns error JSON.
+*   **Polling Behavior**: After the initial wait, the tool **polls until the main reviewer responds** (up to ~10 minutes). This enforces the Loop Rule - preventing premature exit before feedback is received.
 *   **Output**: JSON object with `status`, `message`, `triggered_bots`, `initial_status`, and `next_step`.
 
 ```bash

@@ -30,6 +30,10 @@ GIT_PUSH_TIMEOUT = 60
 GH_AUTH_TIMEOUT = 10
 GH_REPO_VIEW_TIMEOUT = 30
 
+# Polling constants for review feedback
+POLL_INTERVAL_SECONDS = 30  # How often to poll for main reviewer feedback
+POLL_MAX_ATTEMPTS = 20  # Max poll attempts (~10 minutes total)
+
 def print_json(data):
     """Helper to print JSON to stdout."""
     print(json.dumps(data, indent=2))
@@ -237,6 +241,56 @@ class ReviewManager:
             safe_err = self._mask_token(str(e))
             return {"status": "error", "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection.", "next_step": "Pull changes, resolve conflicts, and retry safe_push."}
 
+    def _poll_for_main_reviewer(self, pr_number, since_iso, validation_reviewer, max_attempts=None, poll_interval=None):
+        """
+        Polls until the main reviewer has provided feedback since the given timestamp.
+        Enforces the Loop Rule: never return until main reviewer responds or timeout.
+        
+        Returns the status data from check_status once main reviewer feedback is detected.
+        """
+        max_attempts = max_attempts or POLL_MAX_ATTEMPTS
+        poll_interval = poll_interval or POLL_INTERVAL_SECONDS
+        
+        for attempt in range(1, max_attempts + 1):
+            self._log(f"Poll attempt {attempt}/{max_attempts}...")
+            
+            # Get current status
+            status_data = self.check_status(
+                pr_number, 
+                since_iso=since_iso, 
+                return_data=True,
+                validation_reviewer=validation_reviewer
+            )
+            
+            # Check if main reviewer has responded
+            main_reviewer_info = status_data.get("main_reviewer", {})
+            main_reviewer_state = main_reviewer_info.get("state", "PENDING")
+            
+            # Check for any feedback from main reviewer in items
+            main_reviewer_has_feedback = any(
+                item.get("user") == validation_reviewer 
+                for item in status_data.get("items", [])
+            )
+            
+            if main_reviewer_has_feedback or main_reviewer_state not in ["PENDING", None]:
+                self._log(f"Main reviewer ({validation_reviewer}) has responded with state: {main_reviewer_state}")
+                return status_data
+            
+            # Not yet - wait and poll again
+            if attempt < max_attempts:
+                self._log(f"Main reviewer has not responded yet. Waiting {poll_interval}s before next poll...")
+                try:
+                    time.sleep(poll_interval)
+                except KeyboardInterrupt:
+                    self._log("\nPolling interrupted by user.")
+                    break
+        
+        # Timeout - return status with warning
+        self._log(f"WARNING: Main reviewer did not respond within {max_attempts * poll_interval}s timeout.")
+        status_data["polling_timeout"] = True
+        status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
+        return status_data
+
     def trigger_review(self, pr_number, wait_seconds=180):
         """
         1. Checks local state (Hard Constraint).
@@ -265,29 +319,33 @@ class ReviewManager:
                 
             self._log("All review bots triggered successfully.")
             
-            # Step 3: Auto-Wait and Check (Enforce Loop)
+            # Step 3: Poll for Main Reviewer Response (Enforce Loop Rule)
             if wait_seconds > 0:
                 self._log("-" * 40)
-                self._log(f"Auto-waiting {wait_seconds} seconds for initial feedback to ensure loop continuity...")
+                self._log(f"Auto-waiting {wait_seconds} seconds for initial bot responses...")
                 try:
                     time.sleep(wait_seconds)
                 except KeyboardInterrupt:
                     self._log("\nWait interrupted. Checking status immediately...")
 
                 self._log("-" * 40)
-                self._log("Initial Status Check:")
+                self._log("Polling for main reviewer feedback (enforcing Loop Rule)...")
                 
-                # Check status since start of trigger
-                status_data = self.check_status(pr_number, since_iso=start_time.isoformat(), return_data=True)
+                # Poll until main reviewer responds or timeout
+                status_data = self._poll_for_main_reviewer(
+                    pr_number=pr_number,
+                    since_iso=start_time.isoformat(),
+                    validation_reviewer="gemini-code-assist[bot]"
+                )
             else:
                 status_data = {"status": "skipped", "message": "Initial status check skipped due to wait_seconds=0."}
             
             return {
                 "status": "success",
-                "message": "Triggered reviews and performed initial status check.",
+                "message": "Triggered reviews and polled for main reviewer feedback.",
                 "triggered_bots": triggered_bots,
                 "initial_status": status_data,
-                "next_step": "Wait for 'wait_seconds' then run 'status' to check for feedback."
+                "next_step": status_data.get("next_step", "Run 'status' to check for feedback.")
             }
 
         except GithubException as e:
