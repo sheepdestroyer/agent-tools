@@ -383,7 +383,8 @@ class ReviewManager:
                  if review.user.login == validation_reviewer:
                       main_reviewer_state = review.state
                       if review.state == "APPROVED":
-                          main_reviewer_last_approval_dt = datetime.fromisoformat(review.created_at)
+                          # review.submitted_at is a datetime object from PyGithub
+                          main_reviewer_last_approval_dt = get_aware_utc_datetime(review.submitted_at)
                       break
             
             # Check for comments from main_reviewer AFTER approval
@@ -391,10 +392,18 @@ class ReviewManager:
             if main_reviewer_state == "APPROVED" and main_reviewer_last_approval_dt:
                 for item in new_feedback:
                     if item.get("user") == validation_reviewer and item.get("type") in ["issue_comment", "inline_comment"]:
-                        comment_dt = datetime.fromisoformat(item["created_at"])
-                        if comment_dt > main_reviewer_last_approval_dt:
-                            has_new_main_reviewer_comments = True
-                            break
+                        # item['created_at'] is an ISO string we populated earlier
+                        try:
+                            comment_dt = datetime.fromisoformat(item.get("created_at", ""))
+                            if comment_dt.tzinfo is None:
+                                comment_dt = comment_dt.replace(tzinfo=timezone.utc)
+                            
+                            if comment_dt > main_reviewer_last_approval_dt:
+                                has_new_main_reviewer_comments = True
+                                break
+                        except (ValueError, TypeError):
+                             # Safely ignore bad dates, but log if needed (or just skip)
+                             continue
 
             if main_reviewer_state == "APPROVED" and not has_changes_requested and not has_new_main_reviewer_comments:
                  next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
