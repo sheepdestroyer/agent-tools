@@ -392,26 +392,42 @@ class ReviewManager:
             has_new_main_reviewer_comments = False
             if main_reviewer_state == "APPROVED" and main_reviewer_last_approval_dt:
                 for item in new_feedback:
-                    if item.get("user") == validation_reviewer and item.get("type") in ["issue_comment", "inline_comment"]:
+                    # Check for issue_comment, inline_comment, OR review comments (state=COMMENTED)
+                    is_main_reviewer = item.get("user") == validation_reviewer
+                    is_comment = item.get("type") in ["issue_comment", "inline_comment"]
+                    is_review_comment = item.get("type") == "review_summary" and item.get("state") == "COMMENTED"
+                    
+                    if is_main_reviewer and (is_comment or is_review_comment):
                         # Use helper for consistent parsing
-                        created_at_val = item.get("created_at") or item.get("updated_at")
+                        # Only use created_at to avoid treating edits (updated_at) of old comments as new feedback
+                        created_at_val = item.get("created_at")
                         if created_at_val:
                             try:
-                                comment_dt = get_aware_utc_datetime(created_at_val)
-                                if comment_dt > main_reviewer_last_approval_dt:
+                                # Ensure we parse string to datetime BEFORE helper if it's a string
+                                if isinstance(created_at_val, str):
+                                    # Handle Z suffix manually if needed, or let fromisoformat handle it (Python 3.11+)
+                                    # But to be safe and consistent with previous fix:
+                                    dt_val = datetime.fromisoformat(created_at_val.replace("Z", "+00:00"))
+                                else:
+                                    dt_val = created_at_val
+                                
+                                comment_dt = get_aware_utc_datetime(dt_val)
+                                
+                                # Use >= to catch comments made at the exact same second
+                                if comment_dt >= main_reviewer_last_approval_dt:
                                     has_new_main_reviewer_comments = True
                                     break
                             except (ValueError, TypeError):
                                 continue
 
-            if main_reviewer_state == "APPROVED" and not has_changes_requested and not has_new_main_reviewer_comments:
-                 next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
-            elif has_changes_requested:
+            if has_changes_requested:
                 next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
             elif has_new_main_reviewer_comments:
                  next_step = f"New comments from {validation_reviewer} after approval. ANALYZE feedback -> FIX code -> SAFE_PUSH."
             elif new_feedback:
                  next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+            elif main_reviewer_state == "APPROVED":
+                 next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
             else:
                  next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again."
             

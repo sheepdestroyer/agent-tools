@@ -25,7 +25,8 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 
 **ALWAYS** parse the JSON output from these tools. 
 - If `status` is `error`, STOP and address the issue (e.g., commit changes, push branch).
-- If `next_step` contains "DO NOT MERGE", **Notify the User** and exit.
+- If `status` is `success`, proceed based on the `message` or `items`, **unless overridden by `next_step`**.
+- In all cases, inspect `next_step`. If `next_step` contains "DO NOT MERGE", **Notify the User** and exit immediately, even if `status` is `success`.
 
 ## Tools
 
