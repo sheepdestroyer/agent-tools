@@ -75,9 +75,16 @@ class ReviewManager:
         print(f"[{timestamp}] [AUDIT] {message}", file=sys.stderr)
 
     def _ensure_workspace(self):
-        """Enforces Rule 3: Artifact Hygiene. Creates agent-workspace/ if missing."""
-        workspace = os.path.join(os.getcwd(), "agent-workspace")
-        os.makedirs(workspace, exist_ok=True)
+        """Creates agent-workspace directory relative to repo root if possible."""
+        try:
+            # Try to find repo root
+            root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True).stdout.strip()
+            self.workspace = os.path.join(root, "agent-tools", "agent-workspace")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fallback to current directory logic
+            self.workspace = os.path.join(os.getcwd(), "agent-workspace")
+
+        os.makedirs(self.workspace, exist_ok=True)
 
     def _detect_repo(self):
         """Auto-detects current repository from git remote (local check preferred)."""
@@ -120,9 +127,12 @@ class ReviewManager:
         2. Local branch is pushed (no diff with upstream)
         """
         # 1. Check for uncommitted changes
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
-        if status.stdout.strip():
-            return False, "Uncommitted changes detected. Please commit or stash them first."
+        try:
+            status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
+            if status.stdout.strip():
+                return False, "Uncommitted changes detected. Please commit or stash them first."
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            return False, f"Git status check failed: {self._mask_token(str(e))}"
 
         # 2. Check if pushed to upstream
         try:
@@ -172,21 +182,25 @@ class ReviewManager:
         self._log("Running safe_push verification...")
         
         # Only check for uncommitted changes, NOT for unpushed commits
-        status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
-        if status.stdout.strip():
-            return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first.", "next_step": "Commit changes and retry safe_push."}
+        try:
+            status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
+            if status.stdout.strip():
+                return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first.", "next_step": "Commit changes and retry safe_push."}
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            return {"status": "error", "message": f"Git status check failed: {self._mask_token(str(e))}", "next_step": "Ensure git is installed and valid."}
 
         # Check upstream configuration (optional but good for safety)
         branch = "unknown"
         try:
             branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
             if branch_proc.returncode != 0:
-                 return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
+                return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
             branch = branch_proc.stdout.strip()
 
+            # Just check if we can get upstream, if not we might need -u
             upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
             if upstream_proc.returncode != 0:
-                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.", "next_step": "Configure upstream and retry safe_push."}
+                return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.", "next_step": "Configure upstream and retry safe_push."}
         except subprocess.TimeoutExpired:
             return {"status": "error", "message": "Git operations timed out.", "next_step": "Check network/git and retry safe_push."}
         except subprocess.CalledProcessError:
@@ -340,11 +354,11 @@ class ReviewManager:
             )
             
             if has_changes_requested:
-                 next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
+                next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
             elif len(new_feedback) > 0:
-                 next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+                next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
             else:
-                 next_step = "No new feedback found since last check. Wait and poll again, or verify if 'Ready to Merge'."
+                next_step = "No new feedback found since last check. Wait and poll again, or verify if 'Ready to Merge'."
 
             output = {
                 "status": "success",
