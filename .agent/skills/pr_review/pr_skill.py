@@ -328,13 +328,29 @@ class ReviewManager:
                             "created_at": review.submitted_at.isoformat()
                         })
             
+            # Determine next_step based on findings
+            next_step = "Analyze 'items'. If actionable feedback exists, fix -> safe_push -> status."
+            
+            has_changes_requested = any(
+                item.get("state") == "CHANGES_REQUESTED" 
+                for item in new_feedback 
+                if item.get("type") == "review_summary"
+            )
+            
+            if has_changes_requested:
+                 next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
+            elif len(new_feedback) > 0:
+                 next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+            else:
+                 next_step = "No new feedback found since last check. Wait and poll again, or verify if 'Ready to Merge'."
+
             output = {
                 "status": "success",
                 "pr_number": pr_number,
                 "checked_at_utc": datetime.now(timezone.utc).isoformat(),
                 "new_item_count": len(new_feedback),
                 "items": new_feedback,
-                "next_step": "Analyze 'items'. If actionable feedback exists, fix -> safe_push -> status. If no feedback or all fixed, wait and poll again."
+                "next_step": next_step
             }
             
             if return_data:
