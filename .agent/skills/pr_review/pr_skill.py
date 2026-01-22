@@ -123,19 +123,41 @@ class ReviewManager:
         except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError, ValueError):
             raise RuntimeError("Error checking repository context: Ensure 'gh' is installed and you are in a git repository.") from None
 
+    def _verify_clean_git(self):
+        """
+        Helper to check that the working directory is clean and we are on a valid branch.
+        Returns: (is_valid, branch_name_or_error_msg)
+        """
+        try:
+            # 1. Check for uncommitted changes
+            status_proc = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
+            if status_proc.stdout.strip():
+                return False, "Uncommitted changes detected. Please commit or stash them first."
+
+            # 2. Get current branch
+            branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
+            branch = branch_proc.stdout.strip()
+            if branch == "HEAD":
+                return False, "Detached HEAD state detected. Please checkout a branch."
+            
+            return True, branch
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            return False, f"Git check failed: {self._mask_token(str(e))}"
+        except subprocess.TimeoutExpired:
+            return False, "Git check timed out."
+
     def _check_local_state(self):
         """
-        Enforces:
-        1. Clean git status (no uncommitted changes)
-        2. Local branch is pushed (no diff with upstream)
+        Verifies:
+        1. Clean git status (implemented in helper).
+        2. Pushed to remote (upstream sync).
         """
-        # 1. Check for uncommitted changes
-        try:
-            status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
-            if status.stdout.strip():
-                return False, "Uncommitted changes detected. Please commit or stash them first."
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-            return False, f"Git status check failed: {self._mask_token(str(e))}"
+        # 1. Check local cleanliness
+        is_clean, branch_or_msg = self._verify_clean_git()
+        if not is_clean:
+             return False, branch_or_msg
+        
+        branch = branch_or_msg
 
         # 2. Check if pushed to upstream
         try:
@@ -184,23 +206,15 @@ class ReviewManager:
         """Attempts to push changes safely, aborting if uncommitted changes exist. Ignores unpushed commits check."""
         self._log("Running safe_push verification...")
         
-        # Only check for uncommitted changes, NOT for unpushed commits
-        try:
-            status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
-            if status.stdout.strip():
-                return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first.", "next_step": "Commit changes and retry safe_push."}
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-            return {"status": "error", "message": f"Git status check failed: {self._mask_token(str(e))}", "next_step": "Ensure git is installed and valid."}
+        # 1. Check local cleanliness using helper
+        is_clean, branch_or_msg = self._verify_clean_git()
+        if not is_clean:
+            # Map helper error to JSON format
+            return {"status": "error", "message": branch_or_msg, "next_step": "Ensure git is clean and valid."}
+        
+        branch = branch_or_msg
 
-        # Check upstream configuration (optional but good for safety)
-        branch = "unknown"
-        try:
-            branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
-            branch = branch_proc.stdout.strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
-        except subprocess.TimeoutExpired:
-            return {"status": "error", "message": "Git branch check timed out."}
+        # Separately check upstream
 
         # Separately check upstream
         try:
@@ -279,7 +293,7 @@ class ReviewManager:
         except GithubException as e:
             print_error(f"GitHub API Error: {self._mask_token(str(e))}")
 
-    def check_status(self, pr_number, since_iso=None, return_data=False):
+    def check_status(self, pr_number, since_iso=None, return_data=False, validation_reviewer="gemini-code-assist[bot]"):
         """
         Stateless check of PR feedback using PyGithub.
         Returns and/or prints JSON summary of status.
@@ -339,7 +353,8 @@ class ReviewManager:
                     })
 
             # 3. Reviews (Approvals/changes requested) - Filter locally
-            for review in pr.get_reviews():
+            reviews = list(pr.get_reviews()) # Materialize list for multiple iteration
+            for review in reviews:
                 if review.submitted_at: # Ensure submitted_at is not None before processing
                     review_dt = get_aware_utc_datetime(review.submitted_at)
                     if review_dt and review_dt >= since_dt:
@@ -351,28 +366,41 @@ class ReviewManager:
                             "created_at": review_dt.isoformat()
                         })
             
-            # Determine next_step based on findings
-            next_step = "Analyze 'items'. If actionable feedback exists, fix -> safe_push -> status."
-            
+            # Determine next_step based on findings AND validation_reviewer
+            next_step = "Wait for reviews."
             has_changes_requested = any(
                 item.get("state") == "CHANGES_REQUESTED" 
                 for item in new_feedback 
                 if item.get("type") == "review_summary"
             )
             
-            if has_changes_requested:
-                next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
-            elif len(new_feedback) > 0:
-                next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
-            else:
-                next_step = "No new feedback found since last check. Wait and poll again, or verify if 'Ready to Merge'."
+            # Check Main Reviewer Status
+            main_reviewer_state = "PENDING"
+            # Iterate REVERSE to get latest review state from main reviewer
+            for review in reversed(reviews):
+                 if review.user.login == validation_reviewer:
+                      main_reviewer_state = review.state
+                      break
 
+            if main_reviewer_state == "APPROVED" and not has_changes_requested:
+                 next_step = "Ready to Merge. (Main Reviewer Approved)"
+            elif has_changes_requested:
+                next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
+            elif new_feedback:
+                 next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+            else:
+                 next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again."
+            
             output = {
                 "status": "success",
                 "pr_number": pr_number,
                 "checked_at_utc": datetime.now(timezone.utc).isoformat(),
                 "new_item_count": len(new_feedback),
                 "items": new_feedback,
+                "main_reviewer": {
+                    "user": validation_reviewer,
+                    "state": main_reviewer_state
+                },
                 "next_step": next_step
             }
             
@@ -401,6 +429,7 @@ def main():
     p_status = subparsers.add_parser("status", help="Check review status")
     p_status.add_argument("pr_number", type=int)
     p_status.add_argument("--since", help="ISO 8601 timestamp")
+    p_status.add_argument("--validation-reviewer", default="gemini-code-assist[bot]", help="Username of the main reviewer that must approve")
 
     # Safe Push
     subparsers.add_parser("safe_push", help="Push changes safely")
@@ -414,17 +443,26 @@ def main():
             result = mgr.trigger_review(args.pr_number, wait_seconds=args.wait)
             print_json(result)
         elif args.command == "status":
-            mgr.check_status(args.pr_number, args.since)
+            mgr.check_status(args.pr_number, args.since, validation_reviewer=args.validation_reviewer)
         elif args.command == "safe_push":
             result = mgr.safe_push()
             print_json(result)
             if result["status"] != "success":
                 sys.exit(1)
     except Exception as e:
-        # Generic catch-all to prevent raw tracebacks, but include string for debug
+        # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
+        # Log full traceback to stderr for debugging
+        sys.stderr.write(f"CRITICAL ERROR: {str(e)}\n")
         import traceback
         traceback.print_exc(file=sys.stderr)
-        print_error(f"Unexpected error: {str(e)}")
+        
+        # Output clean JSON error
+        print(json.dumps({
+            "status": "error", 
+            "message": "An internal error occurred. See stderr for details.",
+            "error_type": type(e).__name__
+        }))
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

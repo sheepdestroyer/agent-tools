@@ -50,9 +50,10 @@ python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER> --wait 18
 Checks for new feedback on a PR since a given timestamp.
 *   **Parameters**:
   - `pr_number` (integer)
-  - `since` (string, ISO 8601 timestamp, e.g., `2024-01-01T12:00:00Z`). Defaults to beginning of time if omitted.
+  - `--since` (string, ISO 8601 timestamp, e.g., `2024-01-01T12:00:00Z`). Defaults to beginning of time if omitted.
+  - `--validation-reviewer` (string, optional): Username of the reviewer whose approval is required (default: `gemini-code-assist[bot]`).
 *   **Behavior**: Stateless check. Returns JSON summary of new comments and reviews.
-*   **Output**: JSON object with `items` list and `next_step` instructions.
+*   **Output**: JSON object with `items` list, `main_reviewer` status, and `next_step` instructions.
 
 ```bash
 python3 .agent/skills/pr_review/pr_skill.py status <PR_NUMBER> --since <ISO_TIMESTAMP>
