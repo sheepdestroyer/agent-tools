@@ -251,6 +251,9 @@ class ReviewManager:
         max_attempts = max_attempts or POLL_MAX_ATTEMPTS
         poll_interval = poll_interval or POLL_INTERVAL_SECONDS
         
+        # Initialize status_data to handle edge case where max_attempts is 0 or loop is interrupted
+        status_data = None
+        
         for attempt in range(1, max_attempts + 1):
             self._log(f"Poll attempt {attempt}/{max_attempts}...")
             
@@ -287,8 +290,18 @@ class ReviewManager:
         
         # Timeout - return status with warning
         self._log(f"WARNING: Main reviewer did not respond within {max_attempts * poll_interval}s timeout.")
-        status_data["polling_timeout"] = True
-        status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
+        
+        # Handle case where no polls were made (e.g., max_attempts was 0)
+        if status_data is None:
+            status_data = {
+                "status": "error",
+                "message": "Polling failed - no status data available.",
+                "polling_timeout": True,
+                "next_step": f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
+            }
+        else:
+            status_data["polling_timeout"] = True
+            status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
         return status_data
 
     def trigger_review(self, pr_number, wait_seconds=180):
