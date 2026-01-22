@@ -140,8 +140,8 @@ class ReviewManager:
         # 2. Check if pushed to upstream
         try:
             # Fetch latest state from remote for accurate comparison
-            # Redirect output to stderr so prompts/hangs are visible in logs
-            subprocess.run(["git", "fetch"], check=True, timeout=GIT_FETCH_TIMEOUT, stdout=sys.stderr, stderr=sys.stderr)
+            # Suppress stdout to avoid polluting structured output; inherit stderr so prompts/hangs remain visible
+            subprocess.run(["git", "fetch"], check=True, timeout=GIT_FETCH_TIMEOUT, stdout=subprocess.DEVNULL)
 
             # Get current branch
             branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT).stdout.strip()
@@ -197,7 +197,7 @@ class ReviewManager:
         try:
             branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
             branch = branch_proc.stdout.strip()
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
         except subprocess.TimeoutExpired:
             return {"status": "error", "message": "Git branch check timed out."}
@@ -209,7 +209,7 @@ class ReviewManager:
                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.", "next_step": "Configure upstream and retry safe_push."}
         except subprocess.TimeoutExpired:
             return {"status": "error", "message": "Git upstream check timed out."}
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             # This can happen if 'git rev-parse --abbrev-ref @{u}' fails for other reasons
             return {"status": "error", "message": f"Failed to determine upstream for branch '{branch}'. Please ensure it's configured.", "next_step": "Check git configuration and retry safe_push."}
 
@@ -218,7 +218,7 @@ class ReviewManager:
         try:
             subprocess.run(["git", "push"], check=True, timeout=GIT_PUSH_TIMEOUT)
             return {"status": "success", "message": "Push successful.", "next_step": "Run 'trigger_review' to start the review cycle."}
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
             # Mask token if present in error
             safe_err = self._mask_token(str(e))
             return {"status": "error", "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection.", "next_step": "Pull changes, resolve conflicts, and retry safe_push."}
@@ -348,7 +348,7 @@ class ReviewManager:
                             "user": review.user.login,
                             "state": review.state,
                             "body": review.body,
-                            "created_at": review.submitted_at.isoformat()
+                            "created_at": review_dt.isoformat()
                         })
             
             # Determine next_step based on findings

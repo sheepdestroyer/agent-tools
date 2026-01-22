@@ -18,5 +18,5 @@
 - **Reference**: See `pr-review-skill` in `.agent/rules/pr-standards.md` for polling intervals managed by the skill.
 
 ## Project Structure & Tooling
-- **Assistant Tools**: `agent-tools/.agent/skills/pr_review/pr_skill.py` is the robust skill for safe pushing, triggering, and checking status of PRs.
+- **Assistant Tools**: `.agent/skills/pr_review/pr_skill.py` is the robust skill for safe pushing, triggering, and checking status of PRs.
 - **Workspace**: `agent-tools/agent-workspace/` is the designated area for operational logs and temporary files. Avoid the project root.
