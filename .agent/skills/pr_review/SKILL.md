@@ -9,7 +9,7 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 
 > [!CAUTION]
 > **The Loop Rule - CRITICAL**: 
-> 1. **NEVER** call `notify_user` or exit during a review cycle until "Ready to Merge".
+> 1. **NEVER** call `notify_user` or exit during a review cycle until `next_step` indicates "Validation Complete".
 > 2. **ALWAYS** check existing feedback with `status` BEFORE triggering new reviews.
 > 3. Only trigger reviews after a fresh push, not repeatedly.
 > Loop: `Push → Status Check → Analyze → Fix → Repeat`.

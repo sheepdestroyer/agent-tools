@@ -348,6 +348,7 @@ class ReviewManager:
                         "body": comment.body,
                         "path": comment.path,
                         "line": comment.line,
+                        "created_at": get_aware_utc_datetime(comment.created_at).isoformat() if comment.created_at else None,
                         "updated_at": comment_dt.isoformat(),
                         "url": comment.html_url
                     })
