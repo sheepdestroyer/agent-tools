@@ -33,12 +33,12 @@ GH_REPO_VIEW_TIMEOUT = 30
 # Polling constants for review feedback
 # Configurable via environment variables
 try:
-    POLL_INTERVAL_SECONDS = int(os.environ.get("PR_REVIEW_POLL_INTERVAL", "30"))
+    POLL_INTERVAL_SECONDS = max(int(os.environ.get("PR_REVIEW_POLL_INTERVAL", "30")), 1)
 except ValueError:
     POLL_INTERVAL_SECONDS = 30
 
 try:
-    POLL_MAX_ATTEMPTS = int(os.environ.get("PR_REVIEW_POLL_MAX_ATTEMPTS", "20"))
+    POLL_MAX_ATTEMPTS = max(int(os.environ.get("PR_REVIEW_POLL_MAX_ATTEMPTS", "20")), 1)
 except ValueError:
     POLL_MAX_ATTEMPTS = 20
 
@@ -369,9 +369,17 @@ class ReviewManager:
             else:
                 status_data = {"status": "skipped", "message": "Initial status check skipped due to wait_seconds=0."}
             
+            message = "Triggered reviews."
+            if wait_seconds > 0 and not status_data.get("polling_interrupted"):
+                message = "Triggered reviews and polled for main reviewer feedback."
+            elif status_data.get("polling_interrupted"):
+                message = "Triggered reviews; polling was interrupted."
+            elif wait_seconds <= 0:
+                message = "Triggered reviews; polling was skipped."
+            
             return {
                 "status": "success",
-                "message": "Triggered reviews and polled for main reviewer feedback.",
+                "message": message,
                 "triggered_bots": triggered_bots,
                 "initial_status": status_data,
                 "next_step": status_data.get("next_step", "Run 'status' to check for feedback.")
@@ -573,7 +581,7 @@ def main():
     p_status = subparsers.add_parser("status", help="Check review status")
     p_status.add_argument("pr_number", type=int)
     p_status.add_argument("--since", help="ISO 8601 timestamp")
-    p_status.add_argument("--validation-reviewer", default="gemini-code-assist[bot]", help="Username of the main reviewer that must approve")
+    p_status.add_argument("--validation-reviewer", default=DEFAULT_VALIDATION_REVIEWER, help="Username of the main reviewer that must approve")
 
     # Safe Push
     subparsers.add_parser("safe_push", help="Push changes safely")
