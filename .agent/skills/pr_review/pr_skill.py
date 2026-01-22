@@ -286,7 +286,12 @@ class ReviewManager:
                     time.sleep(poll_interval)
                 except KeyboardInterrupt:
                     self._log("\nPolling interrupted by user.")
-                    break
+                    # Return distinct status for interruption vs timeout
+                    if status_data is None:
+                        status_data = {"status": "interrupted", "message": "Polling interrupted before first check."}
+                    status_data["polling_interrupted"] = True
+                    status_data["next_step"] = "INTERRUPTED: Polling cancelled by user. Resume with 'status' command."
+                    return status_data
         
         # Timeout - return status with warning
         self._log(f"WARNING: Main reviewer did not respond within {max_attempts * poll_interval}s timeout.")
@@ -451,21 +456,26 @@ class ReviewManager:
             main_reviewer_state = "PENDING"
             main_reviewer_last_approval_dt = None
 
-            # First pass: find the most recent approval timestamp from main reviewer
-            for review in reversed(reviews):
-                if review.user.login == validation_reviewer and review.state == "APPROVED":
-                    main_reviewer_last_approval_dt = get_aware_utc_datetime(review.submitted_at)
-                    break
-            
-            # Second pass: find the latest review state from main reviewer
+            # Single pass: find latest state AND most recent approval timestamp
+            found_latest_state = False
             for review in reversed(reviews):
                 if review.user.login == validation_reviewer:
-                    main_reviewer_state = review.state
-                    break
+                    if not found_latest_state:
+                        main_reviewer_state = review.state
+                        found_latest_state = True
+                    
+                    if main_reviewer_last_approval_dt is None and review.state == "APPROVED":
+                        main_reviewer_last_approval_dt = get_aware_utc_datetime(review.submitted_at)
+                    
+                    # Exit early if both are found
+                    if found_latest_state and main_reviewer_last_approval_dt is not None:
+                        break
             
             # Check for comments from main_reviewer AFTER approval
+            # Note: Only check if approval exists, not if current state is APPROVED
+            # (fixes bug where APPROVED -> COMMENTED was not detected)
             has_new_main_reviewer_comments = False
-            if main_reviewer_state == "APPROVED" and main_reviewer_last_approval_dt:
+            if main_reviewer_last_approval_dt:
                 for item in new_feedback:
                     # Check for issue_comment, inline_comment, OR review comments (state=COMMENTED)
                     is_main_reviewer = item.get("user") == validation_reviewer
