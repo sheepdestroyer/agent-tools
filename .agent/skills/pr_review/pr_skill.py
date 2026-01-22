@@ -497,7 +497,8 @@ class ReviewManager:
                                 if comment_dt >= main_reviewer_last_approval_dt:
                                     has_new_main_reviewer_comments = True
                                     break
-                            except (ValueError, TypeError):
+                            except (ValueError, TypeError) as e:
+                                self._log(f"Warning: Could not parse date '{created_at_val}'. Error: {e}. Skipping item.")
                                 continue
 
             if has_changes_requested:
