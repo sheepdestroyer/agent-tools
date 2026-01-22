@@ -79,7 +79,10 @@ class ReviewManager:
         try:
             # Try to find repo root
             root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True).stdout.strip()
-            self.workspace = os.path.join(root, "agent-tools", "agent-workspace")
+            if os.path.basename(root) == "agent-tools":
+                self.workspace = os.path.join(root, "agent-workspace")
+            else:
+                self.workspace = os.path.join(root, "agent-tools", "agent-workspace")
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback to current directory logic
             self.workspace = os.path.join(os.getcwd(), "agent-workspace")
@@ -191,15 +194,13 @@ class ReviewManager:
 
         # Check upstream configuration (optional but good for safety)
         branch = "unknown"
-        # Check upstream configuration (optional but good for safety)
-        branch = "unknown"
         try:
             branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
             branch = branch_proc.stdout.strip()
         except subprocess.CalledProcessError:
-             return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
+            return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
         except subprocess.TimeoutExpired:
-             return {"status": "error", "message": "Git branch check timed out."}
+            return {"status": "error", "message": "Git branch check timed out."}
 
         # Separately check upstream
         try:
@@ -317,7 +318,7 @@ class ReviewManager:
                     "user": comment.user.login,
                     "body": comment.body,
                     "url": comment.html_url,
-                    "updated_at": get_aware_utc_datetime(comment.updated_at).isoformat(),
+                    "updated_at": get_aware_utc_datetime(comment.updated_at).isoformat() if comment.updated_at else None,
                     "created_at": get_aware_utc_datetime(comment.created_at).isoformat()
                 })
 
