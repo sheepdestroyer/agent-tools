@@ -48,8 +48,8 @@ class ReviewManager:
             try:
                 res = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True, timeout=GH_AUTH_TIMEOUT)
                 self.token = res.stdout.strip()
-            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-                print_error("No GITHUB_TOKEN found and 'gh' command failed or is not installed.")
+            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+                print_error(f"No GITHUB_TOKEN found and 'gh' command failed: {e}")
         
         try:
             self.g = Github(auth=Auth.Token(self.token))
@@ -268,7 +268,9 @@ class ReviewManager:
             """Converts a naive datetime from PyGithub into a timezone-aware one."""
             if dt_obj is None:
                 return None
-            return dt_obj.replace(tzinfo=timezone.utc)
+            if dt_obj.tzinfo is None:
+                return dt_obj.replace(tzinfo=timezone.utc)
+            return dt_obj.astimezone(timezone.utc)
 
         try:
             pr = self.repo.get_pull(pr_number)
