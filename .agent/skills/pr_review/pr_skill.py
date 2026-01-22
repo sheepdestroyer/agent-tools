@@ -255,44 +255,44 @@ class ReviewManager:
         status_data = None
         
         for attempt in range(1, max_attempts + 1):
-            self._log(f"Poll attempt {attempt}/{max_attempts}...")
-            
-            # Get current status
-            status_data = self.check_status(
-                pr_number, 
-                since_iso=since_iso, 
-                return_data=True,
-                validation_reviewer=validation_reviewer
-            )
-            
-            # Check for any NEW feedback from main reviewer in items (filtered by since_iso)
-            # IMPORTANT: Do NOT check main_reviewer_state here - that reflects ALL historical reviews
-            # and would cause immediate exit if main reviewer ever commented before.
-            # We only want to exit when the main reviewer has posted NEW feedback since trigger.
-            main_reviewer_has_new_feedback = any(
-                item.get("user") == validation_reviewer 
-                for item in status_data.get("items", [])
-            )
-            
-            if main_reviewer_has_new_feedback:
-                main_reviewer_info = status_data.get("main_reviewer", {})
-                main_reviewer_state = main_reviewer_info.get("state", "PENDING")
-                self._log(f"Main reviewer ({validation_reviewer}) has NEW feedback with state: {main_reviewer_state}")
-                return status_data
-            
-            # Not yet - wait and poll again
-            if attempt < max_attempts:
-                self._log(f"Main reviewer has not responded yet. Waiting {poll_interval}s before next poll...")
-                try:
-                    time.sleep(poll_interval)
-                except KeyboardInterrupt:
-                    self._log("\nPolling interrupted by user.")
-                    # Return distinct status for interruption vs timeout
-                    if status_data is None:
-                        status_data = {"status": "interrupted", "message": "Polling interrupted before first check."}
-                    status_data["polling_interrupted"] = True
-                    status_data["next_step"] = "INTERRUPTED: Polling cancelled by user. Resume with 'status' command."
+            try:
+                self._log(f"Poll attempt {attempt}/{max_attempts}...")
+                
+                # Get current status
+                status_data = self.check_status(
+                    pr_number, 
+                    since_iso=since_iso, 
+                    return_data=True,
+                    validation_reviewer=validation_reviewer
+                )
+                
+                # Check for any NEW feedback from main reviewer in items (filtered by since_iso)
+                # IMPORTANT: Do NOT check main_reviewer_state here - that reflects ALL historical reviews
+                # and would cause immediate exit if main reviewer ever commented before.
+                # We only want to exit when the main reviewer has posted NEW feedback since trigger.
+                main_reviewer_has_new_feedback = any(
+                    item.get("user") == validation_reviewer 
+                    for item in status_data.get("items", [])
+                )
+                
+                if main_reviewer_has_new_feedback:
+                    main_reviewer_info = status_data.get("main_reviewer", {})
+                    main_reviewer_state = main_reviewer_info.get("state", "PENDING")
+                    self._log(f"Main reviewer ({validation_reviewer}) has NEW feedback with state: {main_reviewer_state}")
                     return status_data
+                
+                # Not yet - wait and poll again
+                if attempt < max_attempts:
+                    self._log(f"Main reviewer has not responded yet. Waiting {poll_interval}s before next poll...")
+                    time.sleep(poll_interval)
+            except KeyboardInterrupt:
+                self._log("\nPolling interrupted by user.")
+                # Return distinct status for interruption vs timeout
+                if status_data is None:
+                    status_data = {"status": "interrupted", "message": "Polling interrupted before first check."}
+                status_data["polling_interrupted"] = True
+                status_data["next_step"] = "INTERRUPTED: Polling cancelled by user. Resume with 'status' command."
+                return status_data
         
         # Timeout - return status with warning
         self._log(f"WARNING: Main reviewer did not respond within {max_attempts * poll_interval}s timeout.")
