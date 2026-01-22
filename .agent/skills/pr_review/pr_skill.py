@@ -174,30 +174,34 @@ class ReviewManager:
         # Only check for uncommitted changes, NOT for unpushed commits
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
         if status.stdout.strip():
-            return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first."}
+            return {"status": "error", "message": "Uncommitted changes detected. Please commit or stash them first.", "next_step": "Commit changes and retry safe_push."}
 
         # Check upstream configuration (optional but good for safety)
         branch = "unknown"
         try:
             branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
             if branch_proc.returncode != 0:
-                 return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?"}
+                 return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
             branch = branch_proc.stdout.strip()
 
             upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
             if upstream_proc.returncode != 0:
-                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first."}
+                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.", "next_step": "Configure upstream and retry safe_push."}
         except subprocess.TimeoutExpired:
-            return {"status": "error", "message": "Git operations timed out."}
+            return {"status": "error", "message": "Git operations timed out.", "next_step": "Check network/git and retry safe_push."}
+        except subprocess.CalledProcessError:
+            # This can happen if 'git rev-parse --abbrev-ref @{u}' fails for other reasons
+            return {"status": "error", "message": f"Failed to determine upstream for branch '{branch}'. Please ensure it's configured.", "next_step": "Check git configuration and retry safe_push."}
+
 
         # Attempt push
         try:
             subprocess.run(["git", "push"], check=True, timeout=GIT_PUSH_TIMEOUT)
-            return {"status": "success", "message": "Push successful."}
+            return {"status": "success", "message": "Push successful.", "next_step": "Run 'trigger_review' to start the review cycle."}
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             # Mask token if present in error
             safe_err = self._mask_token(str(e))
-            return {"status": "error", "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection."}
+            return {"status": "error", "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection.", "next_step": "Pull changes, resolve conflicts, and retry safe_push."}
 
     def trigger_review(self, pr_number, wait_seconds=180):
         """
@@ -248,7 +252,8 @@ class ReviewManager:
                 "status": "success",
                 "message": "Triggered reviews and performed initial status check.",
                 "triggered_bots": triggered_bots,
-                "initial_status": status_data
+                "initial_status": status_data,
+                "next_step": "Wait for 'wait_seconds' then run 'status' to check for feedback."
             }
 
         except GithubException as e:
@@ -328,7 +333,8 @@ class ReviewManager:
                 "pr_number": pr_number,
                 "checked_at_utc": datetime.now(timezone.utc).isoformat(),
                 "new_item_count": len(new_feedback),
-                "items": new_feedback
+                "items": new_feedback,
+                "next_step": "Analyze 'items'. If actionable feedback exists, fix -> safe_push -> status. If no feedback or all fixed, wait and poll again."
             }
             
             if return_data:

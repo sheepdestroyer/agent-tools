@@ -26,7 +26,7 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 
 Safely pushes local changes to the remote repository.
 *   **Enforces**: Checks for uncommitted changes before pushing.
-*   **Returns**: JSON object with `status` ("success" or "error") and `message`.
+*   **Returns**: JSON object with `status` ("success" or "error"), `message`, and `next_step`.
 
 ```bash
 python3 .agent/skills/pr_review/pr_skill.py safe_push
@@ -39,7 +39,7 @@ Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc
   - `pr_number` (integer)
   - `--wait` (integer, optional): Seconds to wait for initial feedback (default: 180).
 *   **Constraints**: Validates local state (clean & pushed) before triggering. If checks fail, it returns error JSON.
-*   **Output**: JSON object with `status`, `message`, `triggered_bots`, and `initial_status`.
+*   **Output**: JSON object with `status`, `message`, `triggered_bots`, `initial_status`, and `next_step`.
 
 ```bash
 python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER> --wait 180
@@ -52,7 +52,7 @@ Checks for new feedback on a PR since a given timestamp.
   - `pr_number` (integer)
   - `since` (string, ISO 8601 timestamp, e.g., `2024-01-01T12:00:00Z`). Defaults to beginning of time if omitted.
 *   **Behavior**: Stateless check. Returns JSON summary of new comments and reviews.
-*   **Output**: JSON object with `items` list.
+*   **Output**: JSON object with `items` list and `next_step` instructions.
 
 ```bash
 python3 .agent/skills/pr_review/pr_skill.py status <PR_NUMBER> --since <ISO_TIMESTAMP>
