@@ -5,40 +5,31 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
 1.  **Preparation & Verification**
     *   Ensure all local changes are committed.
     *   **CRITICAL**: Run tests locally (`pytest`) and capture output in `tests/artifacts/`.
+    *   **MANDATORY**: *All test suites must pass before pushing changes.*
     *   **CRITICAL**: `git push` changes to the remote branch. *Never trigger a review on unpushed code.*
 
-2.  **Trigger Reviews**
-    *   Use the helper script to trigger reviews:
+2.  **Check Existing Status FIRST**
+    *   **ALWAYS** check for existing feedback before triggering new reviews:
     ```bash
-    python3 agent-tools/pr_helper.py trigger {PR_NUMBER}
-    # Or manually:
-    # gh pr comment {PR_NUMBER} --body="/gemini review"
-    # gh pr comment {PR_NUMBER} --body="@coderabbitai review"
-    # gh pr comment {PR_NUMBER} --body="@sourcery-ai review"
-    # gh pr comment {PR_NUMBER} --body="/review"
-    # gh pr comment {PR_NUMBER} --body="@ellipsis review this"
+    python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}
     ```
+    *   If there are unaddressed issues, skip to Step 4 (Analyze & Implement).
+    *   Only proceed to Step 3 if no existing feedback or all feedback has been addressed.
 
-3.  **Monitor & Poll**
-    *   Wait at least **3 minutes** before the first check.
-    *   Use the helper script to monitor for feedback:
+3.  **Trigger Reviews (Only When Needed)**
+    *   Use the robust skill to trigger reviews (automatically checks for unpushed changes):
     ```bash
-    python3 agent-tools/pr_helper.py monitor {PR_NUMBER} --since {TIMESTAMP} --output "agent-tools/agent-workspace/feedback.json"
+    python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}
     ```
-    *   Alternatively, use Github MCP tool or `gh` CLI to check status manually if the script fails.
+    *   Wait **3 minutes** for bots to process, then return to Step 2.
 
 4.  **Analyze & Implement**
-    *   Read `feedback.json`.
-    *   Implement fixes for all valid issues.
+    *   Review feedback and implement fixes for all valid issues.
     *   **Loop**: Return to Step 1 until "Ready to Merge".
 
-> [!NOTE]
-> **Pagination**: When using the `gh` CLI manually (e.g., `gh api`), ensure you use the `--paginate` flag to retrieve all comments. Default limits may hide critical feedback in long PRs.
-
-> [!WARNING]
-> **Timezones**: Always use **UTC** (Coordinated Universal Time) for all timestamps when interacting with the GitHub API. Ensure your datetime objects are timezone-aware (e.g., `tzinfo=timezone.utc`). Comparing naive (local) vs aware (API) datetimes causes crashes.
-
-> [!CAUTION]
-> **No Browser Usage**: Do **NOT** use browser tools (subagents, page reading) to interact with GitHub or monitor the PR. Use GitHub MCP tools or `gh` CLI tools exclusively. Using the browser for GitHub is prohibited as it is inefficient and prone to error.
-> [!DANGER]
-> **Forbidden Actions**: Agents must **NEVER** merge a PR, close a PR, or delete a PR's branch. These actions are reserved for human maintainers or specific CI/CD pipelines. When the cycle is complete, inform the user and await further instructions.
+## Compliance
+> [!IMPORTANT]
+> This workflow enforces the **Standards & Rules** defined in `.agent/rules/pr-standards.md`.
+> *   **Push Before Trigger**: Enforced by `pr_skill.py`.
+> *   **The Loop**: Enforced by `pr_skill.py`.
+> *   **Prohibitions**: Agents must **NEVER** merge, close, or delete branches.
