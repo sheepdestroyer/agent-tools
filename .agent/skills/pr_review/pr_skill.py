@@ -191,18 +191,23 @@ class ReviewManager:
 
         # Check upstream configuration (optional but good for safety)
         branch = "unknown"
+        # Check upstream configuration (optional but good for safety)
+        branch = "unknown"
         try:
-            branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
-            if branch_proc.returncode != 0:
-                return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
+            branch_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, timeout=GIT_SHORT_TIMEOUT)
             branch = branch_proc.stdout.strip()
+        except subprocess.CalledProcessError:
+             return {"status": "error", "message": "Could not determine current git branch. Are you in a git repository?", "next_step": "Initialize a git repository or navigate to one."}
+        except subprocess.TimeoutExpired:
+             return {"status": "error", "message": "Git branch check timed out."}
 
-            # Just check if we can get upstream, if not we might need -u
+        # Separately check upstream
+        try:
             upstream_proc = subprocess.run(["git", "rev-parse", "--abbrev-ref", "@{u}"], capture_output=True, text=True, timeout=GIT_SHORT_TIMEOUT)
             if upstream_proc.returncode != 0:
                 return {"status": "error", "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.", "next_step": "Configure upstream and retry safe_push."}
         except subprocess.TimeoutExpired:
-            return {"status": "error", "message": "Git operations timed out.", "next_step": "Check network/git and retry safe_push."}
+            return {"status": "error", "message": "Git upstream check timed out."}
         except subprocess.CalledProcessError:
             # This can happen if 'git rev-parse --abbrev-ref @{u}' fails for other reasons
             return {"status": "error", "message": f"Failed to determine upstream for branch '{branch}'. Please ensure it's configured.", "next_step": "Check git configuration and retry safe_push."}
@@ -312,7 +317,8 @@ class ReviewManager:
                     "user": comment.user.login,
                     "body": comment.body,
                     "url": comment.html_url,
-                    "created_at": comment.created_at.isoformat()
+                    "updated_at": get_aware_utc_datetime(comment.updated_at).isoformat(),
+                    "created_at": get_aware_utc_datetime(comment.created_at).isoformat()
                 })
 
             # 2. Review Comments (Inline)
