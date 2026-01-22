@@ -31,8 +31,19 @@ GH_AUTH_TIMEOUT = 10
 GH_REPO_VIEW_TIMEOUT = 30
 
 # Polling constants for review feedback
-POLL_INTERVAL_SECONDS = 30  # How often to poll for main reviewer feedback
-POLL_MAX_ATTEMPTS = 20  # Max poll attempts (~10 minutes total)
+# Configurable via environment variables
+try:
+    POLL_INTERVAL_SECONDS = int(os.environ.get("PR_REVIEW_POLL_INTERVAL", "30"))
+except ValueError:
+    POLL_INTERVAL_SECONDS = 30
+
+try:
+    POLL_MAX_ATTEMPTS = int(os.environ.get("PR_REVIEW_POLL_MAX_ATTEMPTS", "20"))
+except ValueError:
+    POLL_MAX_ATTEMPTS = 20
+
+# Default Validation Reviewer (The bot/user that must approve)
+DEFAULT_VALIDATION_REVIEWER = os.environ.get("PR_REVIEW_VALIDATION_REVIEWER", "gemini-code-assist[bot]")
 
 def print_json(data):
     """Helper to print JSON to stdout."""
@@ -308,7 +319,7 @@ class ReviewManager:
         status_data["next_step"] = f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
         return status_data
 
-    def trigger_review(self, pr_number, wait_seconds=180, validation_reviewer="gemini-code-assist[bot]"):
+    def trigger_review(self, pr_number, wait_seconds=180, validation_reviewer=DEFAULT_VALIDATION_REVIEWER):
         """
         1. Checks local state (Hard Constraint).
         2. Post comments to trigger bots.
@@ -556,7 +567,7 @@ def main():
     p_trigger = subparsers.add_parser("trigger_review", help="Trigger reviews safely")
     p_trigger.add_argument("pr_number", type=int)
     p_trigger.add_argument("--wait", type=int, default=180, help="Seconds to wait for initial feedback (default: 180)")
-    p_trigger.add_argument("--validation-reviewer", default="gemini-code-assist[bot]", help="Username of the main reviewer that must approve")
+    p_trigger.add_argument("--validation-reviewer", default=DEFAULT_VALIDATION_REVIEWER, help="Username of the main reviewer that must approve")
 
     # Status
     p_status = subparsers.add_parser("status", help="Check review status")
