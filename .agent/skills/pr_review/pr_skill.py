@@ -54,10 +54,10 @@ DEFAULT_VALIDATION_REVIEWER = os.environ.get(
 # Common instructional strings for next_step
 ACTION_INSTRUCTIONS = (
     "ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. "
-    "Pull and merge latest changes from the remote branch before starting addressing code reviews, "
-    "as bots may since have pushed formatting fixes to your previous changes. "
-    "Be sure to address every comments and code reviews from all reviewers, ensure CI passes. "
-    "Be sure to run and fix all available tests and Linting before pushing your next changes."
+    "Pull and merge latest changes from the remote branch before starting to address code reviews, "
+    "as bots may have since pushed formatting fixes to your previous changes. "
+    "Be sure to address every comment and code review from all reviewers, ensure CI passes. "
+    "Run and fix all available tests and Linting before pushing your next changes."
 )
 
 RATE_LIMIT_INSTRUCTION = " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
@@ -335,8 +335,6 @@ class ReviewManager:
             }
 
         branch = branch_or_msg
-
-        # Separately check upstream
 
         # Separately check upstream
         try:
