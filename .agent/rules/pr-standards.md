@@ -4,6 +4,13 @@
 > **Canonical Source**: This file defines the authoritative PR standards and rules.
 > All agents MUST follow the standards defined here.
 
+## 0. Deployment Locations
+**Discovery Rule**: Agents must search for rules, skills and workflows in the following order:
+1.  **Local Project**: `<PROJECT_ROOT>/.agent/` (Highest priority. Overrides global defaults).
+2.  **User Global**: `~/.gemini/`.
+
+*Note: Documentation examples may use generic paths. Always resolve the actual path based on presence.*
+
 ## 1. The Loop Rule
 A Review Cycle is a **LOOP**, not a check.
 *   **Definition**: A cycle is `Push -> Check Status -> Analyze -> Fix -> REPEAT`. Only trigger new reviews after a push, not repeatedly.

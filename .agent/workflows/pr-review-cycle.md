@@ -11,7 +11,8 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
 2.  **Check Existing Status FIRST**
     *   **ALWAYS** check for existing feedback before triggering new reviews:
     ```bash
-    python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}
+    # Resolve path: local .agent/ OR global ~/.gemini/antigravity/
+    python3 {PATH_TO_SKILLS}/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}
     ```
     *   If there are unaddressed issues, skip to Step 4 (Analyze & Implement).
     *   Only proceed to Step 3 if no existing feedback or all feedback has been addressed.
@@ -19,7 +20,8 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
 3.  **Trigger Reviews (Only When Needed)**
     *   Use the robust skill to trigger reviews (automatically checks for unpushed changes):
     ```bash
-    python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}
+    # Resolve path: local .agent/ OR global ~/.gemini/antigravity/
+    python3 {PATH_TO_SKILLS}/pr_review/pr_skill.py trigger_review {PR_NUMBER}
     ```
     *   Wait **3 minutes** for bots to process, then return to Step 2.
 
