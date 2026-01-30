@@ -37,3 +37,4 @@ pr_feedback.json
 debug_*.txt
 feedback_cycle_*.json
 .agent/**/__pycache__/
+deploy.sh
