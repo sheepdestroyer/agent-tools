@@ -5,7 +5,7 @@ description: Robust PR review management skill enforcing "The Loop" and "Push Be
 
 # PR Review Skill
 
-A robust skill for managing the Pull Request review cycle with AI agents. This skill enforces best practices (like pushing before triggering) programmatically, adhering to the standards in `.agent/rules/pr-standards.md`.
+A robust skill for managing the Pull Request review cycle with AI agents. This skill enforces best practices (like pushing before triggering) programmatically, adhering to the standards in `~/.gemini/rules/pr-standards.md`.
 
 > [!CAUTION]
 > **The Loop Rule - CRITICAL**: 
@@ -28,6 +28,14 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 - If `status` is `success`, proceed based on the `message` or `items`, **unless overridden by `next_step`**.
 - In all cases, inspect `next_step`. If `next_step` contains "DO NOT MERGE", **Notify the User** and exit immediately, even if `status` is `success`.
 
+### Mandatory Behavior Rules (Enforced by Tool Output)
+1. **Autonomy**: "Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue"
+2. **Freshness**: "Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes"
+3. **Completeness**: "Be sure to address every comments and code reviews from all reviewers, ensure CI passes"
+4. **Quality**: "Be sure to run and fix all available tests and Linting before pushing your next changes"
+5. **Rate Limits**: "If main reviewer says it just became rate-limited, address remaining code reviews then stop there"
+6. **Prohibitions**: "Never merge or delete an branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
+
 ## Tools
 
 ### `safe_push`
@@ -37,7 +45,7 @@ Safely pushes local changes to the remote repository.
 *   **Returns**: JSON object with `status` ("success" or "error"), `message`, and `next_step`.
 
 ```bash
-python3 .agent/skills/pr_review/pr_skill.py safe_push
+python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py safe_push
 ```
 
 ### `trigger_review`
@@ -51,7 +59,7 @@ Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc
 *   **Output**: JSON object with `status`, `message`, `triggered_bots`, `initial_status`, and `next_step`.
 
 ```bash
-python3 .agent/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER> --wait 180
+python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py trigger_review <PR_NUMBER> --wait 180
 ```
 
 ### `status`
@@ -65,26 +73,26 @@ Checks for new feedback on a PR since a given timestamp.
 *   **Output**: JSON object with `items` list, `main_reviewer` status, and `next_step` instructions.
 
 ```bash
-python3 .agent/skills/pr_review/pr_skill.py status <PR_NUMBER> --since <ISO_TIMESTAMP>
+python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py status <PR_NUMBER> --since <ISO_TIMESTAMP>
 ```
 
 ## Usage Example
 
 1. **Push Changes**:
    ```bash
-   python3 .agent/skills/pr_review/pr_skill.py safe_push
+   python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py safe_push
    # output: {"status": "success", "message": "Push successful."}
    ```
 
 2. **Trigger Review**:
    ```bash
-   python3 .agent/skills/pr_review/pr_skill.py trigger_review 123
+   python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py trigger_review 123
    # output: {"status": "success", "message": "...", "initial_status": {...}}
    ```
 
 3. **Check Status** (after waiting 2-3 minutes):
    ```bash
-   python3 .agent/skills/pr_review/pr_skill.py status 123 --since 2024-01-01T12:00:00Z
+   python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py status 123 --since 2024-01-01T12:00:00Z
    # output: {"status": "success", "items": [...], ...}
    ```
 
