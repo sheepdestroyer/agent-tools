@@ -2,7 +2,7 @@
 
 ## 1. Compliance
 > [!IMPORTANT]
-> enforces the **Standards & Rules** defined in `~/.gemini/rules/pr-standards.md`.
+> This document enforces the **Standards & Rules** defined in `~/.gemini/rules/pr-standards.md`.
 > *   **Push Before Trigger**: Enforced by `pr_skill.py`.
 > *   **The Loop**: Enforced by `pr_skill.py`.
 > *   **Prohibitions**: Agents must **NEVER** merge, close, or delete branches.
