@@ -541,7 +541,14 @@ class ReviewManager:
                 "triggered_bots": triggered_bots,
                 "initial_status": status_data,
 <<<<<<< HEAD
+<<<<<<< HEAD
                 "next_step": status_data.get("next_step", "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue ")
+=======
+                "next_step": status_data.get(
+                    "next_step",
+                    "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue ",
+                ),
+>>>>>>> 573a137 (style: format code with Autopep8, Black, isort, Ruff Formatter and Yapf)
             }
 
         except GithubException as e:
@@ -730,23 +737,26 @@ class ReviewManager:
             if has_changes_requested:
                 next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes. Be sure to address every comments and code reviews from all reviewers, ensure CI passes. Be sure to run and fix all available tests and Linting before pushing your next changes. If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
             elif has_new_main_reviewer_comments:
-                 next_step = f"New comments from {validation_reviewer} after approval. ANALYZE feedback -> FIX code -> SAFE_PUSH. Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes. Be sure to address every comments and code reviews from all reviewers, ensure CI passes. Be sure to run and fix all available tests and Linting before pushing your next changes. If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
+                next_step = f"New comments from {validation_reviewer} after approval. ANALYZE feedback -> FIX code -> SAFE_PUSH. Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes. Be sure to address every comments and code reviews from all reviewers, ensure CI passes. Be sure to run and fix all available tests and Linting before pushing your next changes. If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
             elif main_reviewer_state == "APPROVED":
-                 # Check if there's any OTHER feedback besides the main reviewer's approval
-                 other_feedback = [
-                     item for item in new_feedback
-                     if not (item.get("user") == validation_reviewer 
-                             and item.get("type") == "review_summary" 
-                             and item.get("state") == "APPROVED")
-                 ]
-                 if other_feedback:
-                     next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP. Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes. Be sure to address every comments and code reviews from all reviewers, ensure CI passes. Be sure to run and fix all available tests and Linting before pushing your next changes."
-                 else:
-                     next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete an branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
+                # Check if there's any OTHER feedback besides the main reviewer's approval
+                other_feedback = [
+                    item
+                    for item in new_feedback
+                    if not (
+                        item.get("user") == validation_reviewer
+                        and item.get("type") == "review_summary"
+                        and item.get("state") == "APPROVED"
+                    )
+                ]
+                if other_feedback:
+                    next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP. Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes. Be sure to address every comments and code reviews from all reviewers, ensure CI passes. Be sure to run and fix all available tests and Linting before pushing your next changes."
+                else:
+                    next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete an branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
             elif new_feedback:
-                 next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP. Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes. Be sure to address every comments and code reviews from all reviewers, ensure CI passes. Be sure to run and fix all available tests and Linting before pushing your next changes."
+                next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP. Pull and merge latest changes from the remote branch before starting addressing code reviews, as bots may since have pushed formatting fixes to your previous changes. Be sure to address every comments and code reviews from all reviewers, ensure CI passes. Be sure to run and fix all available tests and Linting before pushing your next changes."
             else:
-                 next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue"
+                next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue"
             output = {
                 "status": "success",
                 "pr_number": pr_number,
