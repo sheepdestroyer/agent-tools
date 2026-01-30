@@ -34,7 +34,7 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 3. **Completeness**: "Be sure to address every comments and code reviews from all reviewers, ensure CI passes"
 4. **Quality**: "Be sure to run and fix all available tests and Linting before pushing your next changes"
 5. **Rate Limits**: "If main reviewer says it just became rate-limited, address remaining code reviews then stop there"
-6. **Prohibitions**: \"Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review\"
+6. **Prohibitions**: "Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
 
 ## Tools
 
