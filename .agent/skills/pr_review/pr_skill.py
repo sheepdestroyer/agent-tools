@@ -60,9 +60,7 @@ ACTION_INSTRUCTIONS = (
     "Be sure to run and fix all available tests and Linting before pushing your next changes."
 )
 
-RATE_LIMIT_INSTRUCTION = (
-    " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
-)
+RATE_LIMIT_INSTRUCTION = " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
 
 
 def print_json(data):
