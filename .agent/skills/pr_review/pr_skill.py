@@ -765,7 +765,7 @@ class ReviewManager:
             elif new_feedback:
                 next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
             else:
-                next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue"
+                next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
             output = {
                 "status": "success",
                 "pr_number": pr_number,
