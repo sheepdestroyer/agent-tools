@@ -136,7 +136,8 @@ class ReviewManager:
         # Tag logs as [AUDIT] for compliance and easier filtering
         print(f"[{timestamp}] [AUDIT] {message}", file=sys.stderr)
 
-    def _run_git_cmd(self, args, timeout=GIT_SHORT_TIMEOUT, check=True):
+    @staticmethod
+    def _run_git_cmd(args, timeout=GIT_SHORT_TIMEOUT, check=True):
         """Helper to run git commands securely."""
         return subprocess.run(
             [GIT_PATH] + args,
@@ -146,7 +147,8 @@ class ReviewManager:
             timeout=timeout,
         )
 
-    def _run_gh_cmd(self, args, timeout=GH_AUTH_TIMEOUT):
+    @staticmethod
+    def _run_gh_cmd(args, timeout=GH_AUTH_TIMEOUT):
         """Helper to run gh commands securely."""
         if not GH_PATH:
             raise FileNotFoundError("gh command not found")
@@ -608,8 +610,7 @@ class ReviewManager:
 
         self._log(f"State verified: {msg}")
 
-        # Capture start time for status check
-        start_time = datetime.now(timezone.utc)
+        self._log(f"State verified: {msg}")
 
         # Step 2: Trigger Bots
         triggered_bots = []
@@ -867,19 +868,19 @@ class ReviewManager:
 
             # 1. Fetch all feedback types
             issue_comments = self._fetch_issue_comments(pr_number, since_dt)
-            review_comments = ReviewManager._fetch_review_comments(
+            review_comments = self._fetch_review_comments(
                 pr, since_dt)
-            reviews, all_reviews_objects = ReviewManager._fetch_reviews(
+            reviews, all_reviews_objects = self._fetch_reviews(
                 pr, since_dt)
 
             # Combine new feedback
             new_feedback = issue_comments + review_comments + reviews
 
             # Analysis
-            main_state, last_approval = ReviewManager._analyze_main_reviewer(
+            main_state, last_approval = self._analyze_main_reviewer(
                 all_reviews_objects, validation_reviewer
             )
-            has_conflicts = any(
+            has_changes_requested = any(
                 item.get("state") == "CHANGES_REQUESTED"
                 and item.get("type") == "review_summary"
                 for item in new_feedback
@@ -888,11 +889,11 @@ class ReviewManager:
                 new_feedback, validation_reviewer, last_approval
             )
 
-            next_step = ReviewManager._determine_next_step(
+            next_step = self._determine_next_step(
                 new_feedback,
                 validation_reviewer,
                 main_state,
-                has_conflicts,
+                has_changes_requested,
                 has_new_main_comments,
             )
 
