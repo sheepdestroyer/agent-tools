@@ -696,25 +696,13 @@ class ReviewManager:
         except GithubException as e:
             print_error(f"GitHub API Error: {self._mask_token(str(e))}")
 
-    def check_status(
-        self,
-        pr_number,
-        since_iso=None,
-        return_data=False,
-        validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
-    ):
-        """
-        Stateless check of PR feedback using PyGithub.
-        Returns and/or prints JSON summary of status.
-        """
-
-        def get_aware_utc_datetime(dt_obj):
-            """Converts a naive datetime from PyGithub into a timezone-aware one."""
-            if dt_obj is None:
-                return None
-            if dt_obj.tzinfo is None:
-                return dt_obj.replace(tzinfo=timezone.utc)
-
+    @staticmethod
+    def _get_aware_utc_datetime(dt_obj):
+        """Helper: Converts a naive datetime from PyGithub into a timezone-aware one."""
+        if dt_obj is None:
+            return None
+        if dt_obj.tzinfo is None:
+            return dt_obj.replace(tzinfo=timezone.utc)
         return dt_obj.astimezone(timezone.utc)
 
     def _get_since_dt(self, since_iso):
@@ -733,7 +721,8 @@ class ReviewManager:
                 self._log(f"Warning: Invalid timestamp {since_iso}, ignoring.")
         return since_dt
 
-    def _analyze_main_reviewer(self, reviews, validation_reviewer):
+    @staticmethod
+    def _analyze_main_reviewer(reviews, validation_reviewer):
         """
         Analyze reviews to determine main reviewer state and last approval time.
         Returns: (main_reviewer_state, main_reviewer_last_approval_dt)
@@ -741,13 +730,6 @@ class ReviewManager:
         main_reviewer_state = "PENDING"
         main_reviewer_last_approval_dt = None
         found_latest_state = False
-
-        def get_aware_utc_datetime(dt_obj):
-            if dt_obj is None:
-                return None
-            if dt_obj.tzinfo is None:
-                return dt_obj.replace(tzinfo=timezone.utc)
-            return dt_obj.astimezone(timezone.utc)
 
         # Single pass: find latest state AND most recent approval timestamp
         for review in reversed(reviews):
@@ -760,7 +742,7 @@ class ReviewManager:
                     main_reviewer_last_approval_dt is None
                     and review.state == "APPROVED"
                 ):
-                    main_reviewer_last_approval_dt = get_aware_utc_datetime(
+                    main_reviewer_last_approval_dt = ReviewManager._get_aware_utc_datetime(
                         review.submitted_at
                     )
 
@@ -776,13 +758,6 @@ class ReviewManager:
         """Check if there are new comments from the main reviewer AFTER their last approval."""
         if not last_approval_dt:
             return False
-
-        def get_aware_utc_datetime(dt_obj):
-            if dt_obj is None:
-                return None
-            if dt_obj.tzinfo is None:
-                return dt_obj.replace(tzinfo=timezone.utc)
-            return dt_obj.astimezone(timezone.utc)
 
         for item in new_feedback:
             is_main_reviewer = item.get("user") == validation_reviewer
@@ -801,19 +776,19 @@ class ReviewManager:
                         if created_at_val.endswith("Z"):
                             created_at_val = created_at_val[:-1] + "+00:00"
                         dt_val = datetime.fromisoformat(created_at_val)
-                        comment_dt = get_aware_utc_datetime(dt_val)
+                        comment_dt = ReviewManager._get_aware_utc_datetime(dt_val)
 
                         if comment_dt >= last_approval_dt:
                             return True
                     except (ValueError, TypeError) as e:
                         self._log(
-                            f"Warning: Could not parse date '{created_at_val}'. Error: {e}. Skipping item."
+                            f"Warning: Could not parse date '{created_at_val}'. Error: {e!s}. Skipping item."
                         )
                         continue
         return False
 
+    @staticmethod
     def _determine_next_step(
-        self,
         new_feedback,
         validation_reviewer,
         main_reviewer_state,
@@ -864,14 +839,6 @@ class ReviewManager:
         Checks the status of the PR.
         If since_iso is provided, filters for events strictly AFTER that time.
         """
-
-        def get_aware_utc_datetime(dt_obj):
-            if dt_obj is None:
-                return None
-            if dt_obj.tzinfo is None:
-                return dt_obj.replace(tzinfo=timezone.utc)
-            return dt_obj.astimezone(timezone.utc)
-
         try:
             pr = self.repo.get_pull(pr_number)
             since_dt = self._get_since_dt(since_iso)
@@ -880,51 +847,35 @@ class ReviewManager:
             # 1. Issue Comments
             issue = self.repo.get_issue(pr_number)
             for comment in issue.get_comments(since=since_dt):
-                new_feedback.append(
-                    {
-                        "type": "issue_comment",
-                        "user": comment.user.login,
-                        "body": comment.body,
-                        "url": comment.html_url,
-                        "updated_at": (
-                            get_aware_utc_datetime(
-                                comment.updated_at).isoformat()
-                            if comment.updated_at
-                            else None
-                        ),
-                        "created_at": get_aware_utc_datetime(
-                            comment.created_at
-                        ).isoformat(),
-                    }
-                )
+                new_feedback.append({
+                    "type": "issue_comment",
+                    "user": comment.user.login,
+                    "body": comment.body,
+                    "url": comment.html_url,
+                    "updated_at": (ReviewManager._get_aware_utc_datetime(comment.updated_at).isoformat() if comment.updated_at else None),
+                    "created_at": ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat(),
+                })
 
             # 2. Review Comments
             for comment in pr.get_review_comments():
-                comment_dt = get_aware_utc_datetime(comment.updated_at)
+                comment_dt = ReviewManager._get_aware_utc_datetime(comment.updated_at)
                 if comment_dt and comment_dt >= since_dt:
-                    new_feedback.append(
-                        {
-                            "type": "inline_comment",
-                            "user": comment.user.login,
-                            "body": comment.body,
-                            "path": comment.path,
-                            "line": comment.line,
-                            "created_at": (
-                                get_aware_utc_datetime(
-                                    comment.created_at).isoformat()
-                                if comment.created_at
-                                else None
-                            ),
-                            "updated_at": comment_dt.isoformat(),
-                            "url": comment.html_url,
-                        }
-                    )
+                    new_feedback.append({
+                        "type": "inline_comment",
+                        "user": comment.user.login,
+                        "body": comment.body,
+                        "path": comment.path,
+                        "line": comment.line,
+                        "created_at": (ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat() if comment.created_at else None),
+                        "updated_at": comment_dt.isoformat(),
+                        "url": comment.html_url,
+                    })
 
             # 3. Reviews
             reviews = list(pr.get_reviews())
             for review in reviews:
                 if review.submitted_at:
-                    review_dt = get_aware_utc_datetime(review.submitted_at)
+                    review_dt = ReviewManager._get_aware_utc_datetime(review.submitted_at)
                     if review_dt and review_dt >= since_dt:
                         new_feedback.append(
                             {
@@ -937,25 +888,13 @@ class ReviewManager:
                         )
 
             # Analysis
-            main_state, last_approval = self._analyze_main_reviewer(
-                reviews, validation_reviewer
-            )
+            main_state, last_approval = ReviewManager._analyze_main_reviewer(reviews, validation_reviewer)
+            
+            has_conflicts = any(item.get("state") == "CHANGES_REQUESTED" and item.get("type") == "review_summary" for item in new_feedback)
+            has_new_main_comments = self._check_new_main_reviewer_comments(new_feedback, validation_reviewer, last_approval)
 
-            has_conflicts = any(
-                item.get("state") == "CHANGES_REQUESTED"
-                and item.get("type") == "review_summary"
-                for item in new_feedback
-            )
-            has_new_main_comments = self._check_new_main_reviewer_comments(
-                new_feedback, validation_reviewer, last_approval
-            )
-
-            next_step = self._determine_next_step(
-                new_feedback,
-                validation_reviewer,
-                main_state,
-                has_conflicts,
-                has_new_main_comments,
+            next_step = ReviewManager._determine_next_step(
+                new_feedback, validation_reviewer, main_state, has_conflicts, has_new_main_comments
             )
 
             output = {
