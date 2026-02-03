@@ -316,12 +316,9 @@ class ReviewManager:
         try:
             # Fetch latest state from remote for accurate comparison
             # Suppress stdout to avoid polluting structured output; inherit stderr so prompts/hangs remain visible
-            subprocess.run(
-                [GIT_PATH, "fetch"],
-                check=True,
-                timeout=GIT_FETCH_TIMEOUT,
-                stdout=subprocess.DEVNULL,
-            )
+            # Fetch latest state from remote for accurate comparison
+            # Suppress stdout to avoid polluting structured output; inherit stderr so prompts/hangs remain visible
+            self._run_git_cmd(["fetch"], timeout=GIT_FETCH_TIMEOUT)
 
             # Get current branch
             branch = self._run_git_cmd(
@@ -561,7 +558,17 @@ class ReviewManager:
         self._log(f"  validation_reviewer: {validation_reviewer}")
 
         # Calculate remaining attempts (fix off-by-one: total should not exceed POLL_MAX_ATTEMPTS)
-        remaining_attempts = max(1, POLL_MAX_ATTEMPTS - last_attempt)
+        remaining_attempts = max(0, POLL_MAX_ATTEMPTS - last_attempt)
+
+        if remaining_attempts == 0:
+            return {
+                "status": "resumed",
+                "message": f"No remaining attempts for PR #{pr_number}.",
+                "pr_number": pr_number,
+                "resumed_from_attempt": last_attempt,
+                "initial_status": None,
+                "next_step": "Increase POLL_MAX_ATTEMPTS or start a new cycle with 'trigger_review'.",
+            }
 
         # Resume polling
         status_data = self._poll_for_main_reviewer(
