@@ -149,7 +149,8 @@ class ReviewManager:
             self.workspace = os.path.join(os.getcwd(), "agent-workspace")
 
         os.makedirs(self.workspace, exist_ok=True)
-        self.loop_state_file = os.path.join(self.workspace, LOOP_STATE_FILENAME)
+        self.loop_state_file = os.path.join(
+            self.workspace, LOOP_STATE_FILENAME)
 
     def _detect_repo(self):
         """Auto-detects current repository from git remote (local check preferred)."""
@@ -463,7 +464,9 @@ class ReviewManager:
         for attempt in range(1, max_attempts + 1):
             try:
                 # Save state for crash recovery
-                self._save_loop_state(pr_number, since_iso, validation_reviewer, attempt)
+                self._save_loop_state(
+                    pr_number, since_iso, validation_reviewer, attempt
+                )
                 self._log(f"Poll attempt {attempt}/{max_attempts}...")
 
                 # Get current status
@@ -547,10 +550,13 @@ class ReviewManager:
 
         pr_number = state.get("pr_number")
         since_iso = state.get("since_iso")
-        validation_reviewer = state.get("validation_reviewer", DEFAULT_VALIDATION_REVIEWER)
+        validation_reviewer = state.get(
+            "validation_reviewer", DEFAULT_VALIDATION_REVIEWER
+        )
         last_attempt = state.get("poll_attempt", 1)
 
-        self._log(f"Resuming loop for PR #{pr_number} from attempt {last_attempt}...")
+        self._log(
+            f"Resuming loop for PR #{pr_number} from attempt {last_attempt}...")
         self._log(f"  since_iso: {since_iso}")
         self._log(f"  validation_reviewer: {validation_reviewer}")
 
