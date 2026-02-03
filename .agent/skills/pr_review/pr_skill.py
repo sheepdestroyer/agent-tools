@@ -742,8 +742,9 @@ class ReviewManager:
                     main_reviewer_last_approval_dt is None
                     and review.state == "APPROVED"
                 ):
-                    main_reviewer_last_approval_dt = ReviewManager._get_aware_utc_datetime(
-                        review.submitted_at
+                    main_reviewer_last_approval_dt = (
+                        ReviewManager._get_aware_utc_datetime(
+                            review.submitted_at)
                     )
 
                 # Exit early if both are found
@@ -776,7 +777,8 @@ class ReviewManager:
                         if created_at_val.endswith("Z"):
                             created_at_val = created_at_val[:-1] + "+00:00"
                         dt_val = datetime.fromisoformat(created_at_val)
-                        comment_dt = ReviewManager._get_aware_utc_datetime(dt_val)
+                        comment_dt = ReviewManager._get_aware_utc_datetime(
+                            dt_val)
 
                         if comment_dt >= last_approval_dt:
                             return True
@@ -847,35 +849,56 @@ class ReviewManager:
             # 1. Issue Comments
             issue = self.repo.get_issue(pr_number)
             for comment in issue.get_comments(since=since_dt):
-                new_feedback.append({
-                    "type": "issue_comment",
-                    "user": comment.user.login,
-                    "body": comment.body,
-                    "url": comment.html_url,
-                    "updated_at": (ReviewManager._get_aware_utc_datetime(comment.updated_at).isoformat() if comment.updated_at else None),
-                    "created_at": ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat(),
-                })
+                new_feedback.append(
+                    {
+                        "type": "issue_comment",
+                        "user": comment.user.login,
+                        "body": comment.body,
+                        "url": comment.html_url,
+                        "updated_at": (
+                            ReviewManager._get_aware_utc_datetime(
+                                comment.updated_at
+                            ).isoformat()
+                            if comment.updated_at
+                            else None
+                        ),
+                        "created_at": ReviewManager._get_aware_utc_datetime(
+                            comment.created_at
+                        ).isoformat(),
+                    }
+                )
 
             # 2. Review Comments
             for comment in pr.get_review_comments():
-                comment_dt = ReviewManager._get_aware_utc_datetime(comment.updated_at)
+                comment_dt = ReviewManager._get_aware_utc_datetime(
+                    comment.updated_at)
                 if comment_dt and comment_dt >= since_dt:
-                    new_feedback.append({
-                        "type": "inline_comment",
-                        "user": comment.user.login,
-                        "body": comment.body,
-                        "path": comment.path,
-                        "line": comment.line,
-                        "created_at": (ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat() if comment.created_at else None),
-                        "updated_at": comment_dt.isoformat(),
-                        "url": comment.html_url,
-                    })
+                    new_feedback.append(
+                        {
+                            "type": "inline_comment",
+                            "user": comment.user.login,
+                            "body": comment.body,
+                            "path": comment.path,
+                            "line": comment.line,
+                            "created_at": (
+                                ReviewManager._get_aware_utc_datetime(
+                                    comment.created_at
+                                ).isoformat()
+                                if comment.created_at
+                                else None
+                            ),
+                            "updated_at": comment_dt.isoformat(),
+                            "url": comment.html_url,
+                        }
+                    )
 
             # 3. Reviews
             reviews = list(pr.get_reviews())
             for review in reviews:
                 if review.submitted_at:
-                    review_dt = ReviewManager._get_aware_utc_datetime(review.submitted_at)
+                    review_dt = ReviewManager._get_aware_utc_datetime(
+                        review.submitted_at
+                    )
                     if review_dt and review_dt >= since_dt:
                         new_feedback.append(
                             {
@@ -888,13 +911,25 @@ class ReviewManager:
                         )
 
             # Analysis
-            main_state, last_approval = ReviewManager._analyze_main_reviewer(reviews, validation_reviewer)
-            
-            has_conflicts = any(item.get("state") == "CHANGES_REQUESTED" and item.get("type") == "review_summary" for item in new_feedback)
-            has_new_main_comments = self._check_new_main_reviewer_comments(new_feedback, validation_reviewer, last_approval)
+            main_state, last_approval = ReviewManager._analyze_main_reviewer(
+                reviews, validation_reviewer
+            )
+
+            has_conflicts = any(
+                item.get("state") == "CHANGES_REQUESTED"
+                and item.get("type") == "review_summary"
+                for item in new_feedback
+            )
+            has_new_main_comments = self._check_new_main_reviewer_comments(
+                new_feedback, validation_reviewer, last_approval
+            )
 
             next_step = ReviewManager._determine_next_step(
-                new_feedback, validation_reviewer, main_state, has_conflicts, has_new_main_comments
+                new_feedback,
+                validation_reviewer,
+                main_state,
+                has_conflicts,
+                has_new_main_comments,
             )
 
             output = {
