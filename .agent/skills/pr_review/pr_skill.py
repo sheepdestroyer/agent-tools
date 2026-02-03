@@ -233,9 +233,10 @@ class ReviewManager:
         try:
             # Use os.open with O_CREAT and O_TRUNC to prevent following symlinks if file exists
             # This mitigates CWE-59 symlink attacks in shared directories
-            fd = os.open(
-                self.loop_state_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
-            )
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(self.loop_state_file, flags, 0o600)
             with os.fdopen(fd, "w") as f:
                 json.dump(state, f, indent=2)
         except OSError as e:
@@ -830,6 +831,56 @@ class ReviewManager:
         else:
             return f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
 
+    def _fetch_issue_comments(self, pr_number, since_dt):
+        """Fetch and format issue comments."""
+        issue = self.repo.get_issue(pr_number)
+        comments = []
+        for comment in issue.get_comments(since=since_dt):
+            comments.append({
+                "type": "issue_comment",
+                "user": comment.user.login,
+                "body": comment.body,
+                "url": comment.html_url,
+                "updated_at": (ReviewManager._get_aware_utc_datetime(comment.updated_at).isoformat() if comment.updated_at else None),
+                "created_at": ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat(),
+            })
+        return comments
+
+    def _fetch_review_comments(self, pr, since_dt):
+        """Fetch and format review (inline) comments."""
+        comments = []
+        for comment in pr.get_review_comments():
+            comment_dt = ReviewManager._get_aware_utc_datetime(comment.updated_at)
+            if comment_dt and comment_dt >= since_dt:
+                comments.append({
+                    "type": "inline_comment",
+                    "user": comment.user.login,
+                    "body": comment.body,
+                    "path": comment.path,
+                    "line": comment.line,
+                    "created_at": (ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat() if comment.created_at else None),
+                    "updated_at": comment_dt.isoformat(),
+                    "url": comment.html_url,
+                })
+        return comments
+
+    def _fetch_reviews(self, pr, since_dt):
+        """Fetch and format review summaries."""
+        reviews_data = []
+        all_reviews_objects = list(pr.get_reviews())
+        for review in all_reviews_objects:
+            if review.submitted_at:
+                review_dt = ReviewManager._get_aware_utc_datetime(review.submitted_at)
+                if review_dt and review_dt >= since_dt:
+                    reviews_data.append({
+                        "type": "review_summary",
+                        "user": review.user.login,
+                        "state": review.state,
+                        "body": review.body,
+                        "created_at": review_dt.isoformat(),
+                    })
+        return reviews_data, all_reviews_objects
+
     def check_status(
         self,
         pr_number,
@@ -844,77 +895,19 @@ class ReviewManager:
         try:
             pr = self.repo.get_pull(pr_number)
             since_dt = self._get_since_dt(since_iso)
-            new_feedback = []
+            
+            # 1. Fetch all feedback types
+            issue_comments = self._fetch_issue_comments(pr_number, since_dt)
+            review_comments = self._fetch_review_comments(pr, since_dt)
+            reviews, all_reviews_objects = self._fetch_reviews(pr, since_dt)
 
-            # 1. Issue Comments
-            issue = self.repo.get_issue(pr_number)
-            for comment in issue.get_comments(since=since_dt):
-                new_feedback.append(
-                    {
-                        "type": "issue_comment",
-                        "user": comment.user.login,
-                        "body": comment.body,
-                        "url": comment.html_url,
-                        "updated_at": (
-                            ReviewManager._get_aware_utc_datetime(
-                                comment.updated_at
-                            ).isoformat()
-                            if comment.updated_at
-                            else None
-                        ),
-                        "created_at": ReviewManager._get_aware_utc_datetime(
-                            comment.created_at
-                        ).isoformat(),
-                    }
-                )
-
-            # 2. Review Comments
-            for comment in pr.get_review_comments():
-                comment_dt = ReviewManager._get_aware_utc_datetime(
-                    comment.updated_at)
-                if comment_dt and comment_dt >= since_dt:
-                    new_feedback.append(
-                        {
-                            "type": "inline_comment",
-                            "user": comment.user.login,
-                            "body": comment.body,
-                            "path": comment.path,
-                            "line": comment.line,
-                            "created_at": (
-                                ReviewManager._get_aware_utc_datetime(
-                                    comment.created_at
-                                ).isoformat()
-                                if comment.created_at
-                                else None
-                            ),
-                            "updated_at": comment_dt.isoformat(),
-                            "url": comment.html_url,
-                        }
-                    )
-
-            # 3. Reviews
-            reviews = list(pr.get_reviews())
-            for review in reviews:
-                if review.submitted_at:
-                    review_dt = ReviewManager._get_aware_utc_datetime(
-                        review.submitted_at
-                    )
-                    if review_dt and review_dt >= since_dt:
-                        new_feedback.append(
-                            {
-                                "type": "review_summary",
-                                "user": review.user.login,
-                                "state": review.state,
-                                "body": review.body,
-                                "created_at": review_dt.isoformat(),
-                            }
-                        )
+            # Combine new feedback
+            new_feedback = issue_comments + review_comments + reviews
 
             # Analysis
             main_state, last_approval = ReviewManager._analyze_main_reviewer(
-                reviews, validation_reviewer
+                all_reviews_objects, validation_reviewer
             )
-
             has_conflicts = any(
                 item.get("state") == "CHANGES_REQUESTED"
                 and item.get("type") == "review_summary"
