@@ -107,7 +107,7 @@ class ReviewManager:
             except (
                 subprocess.CalledProcessError,
                 subprocess.TimeoutExpired,
-                FileNotFoundError
+                FileNotFoundError,
             ) as e:
                 print_error(
                     f"No GITHUB_TOKEN found and 'gh' command failed: {e}")
@@ -162,7 +162,8 @@ class ReviewManager:
         """Creates agent-workspace directory relative to repo root if possible."""
         try:
             # Try to find repo root
-            root = self._run_git_cmd(["rev-parse", "--show-toplevel"]).stdout.strip()
+            root = self._run_git_cmd(
+                ["rev-parse", "--show-toplevel"]).stdout.strip()
             if os.path.basename(root) == "agent-tools":
                 self.workspace = os.path.join(root, "agent-workspace")
             else:
@@ -202,7 +203,9 @@ class ReviewManager:
 
         # 2. Fallback to gh CLI (slower, network dependent)
         try:
-            res = self._run_gh_cmd(["repo", "view", "--json", "owner,name"], timeout=GH_REPO_VIEW_TIMEOUT)
+            res = self._run_gh_cmd(
+                ["repo", "view", "--json", "owner,name"], timeout=GH_REPO_VIEW_TIMEOUT
+            )
             data = json.loads(res.stdout)
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
@@ -284,7 +287,8 @@ class ReviewManager:
                 )
 
             # 2. Get current branch
-            branch_proc = self._run_git_cmd(["rev-parse", "--abbrev-ref", "HEAD"])
+            branch_proc = self._run_git_cmd(
+                ["rev-parse", "--abbrev-ref", "HEAD"])
             branch = branch_proc.stdout.strip()
             if branch == "HEAD":
                 return False, "Detached HEAD state detected. Please checkout a branch."
@@ -320,7 +324,9 @@ class ReviewManager:
             )
 
             # Get current branch
-            branch = self._run_git_cmd(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+            branch = self._run_git_cmd(
+                ["rev-parse", "--abbrev-ref", "HEAD"]
+            ).stdout.strip()
 
             # Check if upstream is configured
             upstream_proc = self._run_git_cmd(
