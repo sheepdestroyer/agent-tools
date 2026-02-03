@@ -7,9 +7,9 @@ Outputs JSON to stdout for easy parsing by agents.
 
 import argparse
 import json
-import shlex
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -133,7 +133,7 @@ class ReviewManager:
     def _run_git_cmd(args, timeout=GIT_SHORT_TIMEOUT, check=True):
         """Helper to run git commands securely."""
         if not GIT_PATH:
-             raise FileNotFoundError("git command not found")
+            raise FileNotFoundError("git command not found")
         return subprocess.run(
             [GIT_PATH] + args,
             capture_output=True,
