@@ -228,7 +228,9 @@ class ReviewManager:
         try:
             # Use os.open with O_CREAT and O_TRUNC to prevent following symlinks if file exists
             # This mitigates CWE-59 symlink attacks in shared directories
-            fd = os.open(self.loop_state_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            fd = os.open(
+                self.loop_state_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+            )
             with os.fdopen(fd, "w") as f:
                 json.dump(state, f, indent=2)
         except OSError as e:
@@ -487,7 +489,9 @@ class ReviewManager:
                 self._save_loop_state(
                     pr_number, since_iso, validation_reviewer, attempt
                 )
-                self._log(f"Poll attempt {attempt} (resume+{i+1}) / max {POLL_MAX_ATTEMPTS}...")
+                self._log(
+                    f"Poll attempt {attempt} (resume+{i + 1}) / max {POLL_MAX_ATTEMPTS}..."
+                )
 
                 # Get current status
                 status_data = self.check_status(
