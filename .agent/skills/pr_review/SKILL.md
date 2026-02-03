@@ -35,6 +35,15 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 4. **Quality**: "Be sure to run and fix all available tests and Linting before pushing your next changes"
 5. **Rate Limits**: "If main reviewer says it just became rate-limited, address remaining code reviews then stop there"
 6. **Prohibitions**: "Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
+7. **Crash Recovery**: "If the loop dies unexpectedly, run `resume` to continue from the last checkpoint"
+
+## Loop Resilience
+
+The skill implements crash recovery to prevent lost progress:
+
+*   **State Persistence**: Loop state is saved to `agent-workspace/loop_state.json` after each poll cycle
+*   **Heartbeat Sleep**: Long waits are broken into 5-second chunks with progress output
+*   **Resume Command**: If the loop is interrupted, run `resume` to continue from the last checkpoint
 
 ## Tools
 
@@ -98,3 +107,9 @@ python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py status <PR_NUMBER> --
 
 > [!TIP]
 > For reliable, non-blocking status polling, you can also use **GitHub MCP tools** (`mcp_github_pull_request_read`) directly if you prefer, but this script provides a unified JSON interface.
+
+4. **Resume After Crash**:
+   ```bash
+   python3 ~/.gemini/antigravity/skills/pr_review/pr_skill.py resume
+   # output: {"status": "resumed", "message": "Resumed loop for PR #123..."}
+   ```

@@ -52,6 +52,9 @@ DEFAULT_VALIDATION_REVIEWER = os.environ.get(
     "PR_REVIEW_VALIDATION_REVIEWER", "gemini-code-assist[bot]"
 )
 
+# Loop state file for crash recovery
+LOOP_STATE_FILENAME = "loop_state.json"
+
 # Common instructional strings for next_step
 ACTION_INSTRUCTIONS = (
     "ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. "
@@ -146,6 +149,7 @@ class ReviewManager:
             self.workspace = os.path.join(os.getcwd(), "agent-workspace")
 
         os.makedirs(self.workspace, exist_ok=True)
+        self.loop_state_file = os.path.join(self.workspace, LOOP_STATE_FILENAME)
 
     def _detect_repo(self):
         """Auto-detects current repository from git remote (local check preferred)."""
@@ -198,6 +202,53 @@ class ReviewManager:
             raise RuntimeError(
                 "Error checking repository context: Ensure 'gh' is installed and you are in a git repository."
             ) from None
+
+    def _save_loop_state(self, pr_number, since_iso, validation_reviewer, poll_attempt):
+        """Save loop state to file for crash recovery."""
+        state = {
+            "pr_number": pr_number,
+            "loop_started_at": datetime.now(timezone.utc).isoformat(),
+            "last_poll_at": datetime.now(timezone.utc).isoformat(),
+            "poll_attempt": poll_attempt,
+            "validation_reviewer": validation_reviewer,
+            "since_iso": since_iso,
+            "last_status": "polling",
+        }
+        try:
+            with open(self.loop_state_file, "w") as f:
+                json.dump(state, f, indent=2)
+        except OSError as e:
+            self._log(f"Warning: Could not save loop state: {e}")
+
+    def _load_loop_state(self):
+        """Load loop state from file if it exists. Returns None if no state."""
+        if not os.path.exists(self.loop_state_file):
+            return None
+        try:
+            with open(self.loop_state_file, "r") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            self._log(f"Warning: Could not load loop state: {e}")
+            return None
+
+    def _clear_loop_state(self):
+        """Remove loop state file after successful completion."""
+        try:
+            if os.path.exists(self.loop_state_file):
+                os.remove(self.loop_state_file)
+                self._log("Loop state cleared.")
+        except OSError as e:
+            self._log(f"Warning: Could not clear loop state: {e}")
+
+    def _interruptible_sleep(self, total_seconds, heartbeat_interval=10):
+        """Sleep in small chunks with periodic heartbeat output."""
+        elapsed = 0
+        chunk = 5
+        while elapsed < total_seconds:
+            time.sleep(min(chunk, total_seconds - elapsed))
+            elapsed += chunk
+            if elapsed % heartbeat_interval == 0 and elapsed < total_seconds:
+                self._log(f"  ...waiting ({elapsed}s/{total_seconds}s)")
 
     def _verify_clean_git(self):
         """
@@ -411,6 +462,8 @@ class ReviewManager:
 
         for attempt in range(1, max_attempts + 1):
             try:
+                # Save state for crash recovery
+                self._save_loop_state(pr_number, since_iso, validation_reviewer, attempt)
                 self._log(f"Poll attempt {attempt}/{max_attempts}...")
 
                 # Get current status
@@ -437,14 +490,16 @@ class ReviewManager:
                     self._log(
                         f"Main reviewer ({validation_reviewer}) has NEW feedback with state: {main_reviewer_state}"
                     )
+                    # Clear state on successful completion
+                    self._clear_loop_state()
                     return status_data
 
-                # Not yet - wait and poll again
+                # Not yet - wait and poll again with interruptible sleep
                 if attempt < max_attempts:
                     self._log(
                         f"Main reviewer has not responded yet. Waiting {poll_interval}s before next poll..."
                     )
-                    time.sleep(poll_interval)
+                    self._interruptible_sleep(poll_interval)
             except KeyboardInterrupt:
                 self._log("\nPolling interrupted by user.")
                 # Return distinct status for interruption vs timeout
@@ -455,7 +510,7 @@ class ReviewManager:
                     }
                 status_data["polling_interrupted"] = True
                 status_data["next_step"] = (
-                    "INTERRUPTED: Polling cancelled by user. Resume with 'status' command."
+                    "INTERRUPTED: Polling cancelled by user. Run 'resume' to continue from last checkpoint."
                 )
                 return status_data
 
@@ -476,6 +531,48 @@ class ReviewManager:
             f"TIMEOUT: {validation_reviewer} did not respond. Poll again with 'status' or investigate bot issues."
         )
         return status_data
+
+    def resume_loop(self):
+        """
+        Resume polling from last checkpoint after a crash/interruption.
+        Loads state from loop_state.json and continues where it left off.
+        """
+        state = self._load_loop_state()
+        if state is None:
+            return {
+                "status": "no_state",
+                "message": "No loop state found. Nothing to resume.",
+                "next_step": "Run 'trigger_review' to start a new review cycle.",
+            }
+
+        pr_number = state.get("pr_number")
+        since_iso = state.get("since_iso")
+        validation_reviewer = state.get("validation_reviewer", DEFAULT_VALIDATION_REVIEWER)
+        last_attempt = state.get("poll_attempt", 1)
+
+        self._log(f"Resuming loop for PR #{pr_number} from attempt {last_attempt}...")
+        self._log(f"  since_iso: {since_iso}")
+        self._log(f"  validation_reviewer: {validation_reviewer}")
+
+        # Calculate remaining attempts
+        remaining_attempts = max(1, POLL_MAX_ATTEMPTS - last_attempt + 1)
+
+        # Resume polling
+        status_data = self._poll_for_main_reviewer(
+            pr_number=pr_number,
+            since_iso=since_iso,
+            validation_reviewer=validation_reviewer,
+            max_attempts=remaining_attempts,
+        )
+
+        return {
+            "status": "resumed",
+            "message": f"Resumed loop for PR #{pr_number} from attempt {last_attempt}.",
+            "pr_number": pr_number,
+            "resumed_from_attempt": last_attempt,
+            "initial_status": status_data,
+            "next_step": status_data.get("next_step", "Check status and continue."),
+        }
 
     def trigger_review(
         self,
@@ -829,6 +926,9 @@ def main():
     # Safe Push
     subparsers.add_parser("safe_push", help="Push changes safely")
 
+    # Resume (crash recovery)
+    subparsers.add_parser("resume", help="Resume polling from last checkpoint")
+
     args = parser.parse_args()
 
     try:
@@ -850,6 +950,9 @@ def main():
             print_json(result)
             if result["status"] != "success":
                 sys.exit(1)
+        elif args.command == "resume":
+            result = mgr.resume_loop()
+            print_json(result)
     except Exception as e:
         # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
         # Log full traceback to stderr for debugging
