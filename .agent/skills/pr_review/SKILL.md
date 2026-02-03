@@ -29,8 +29,8 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 - In all cases, inspect `next_step`. If `next_step` contains "DO NOT MERGE", **Notify the User** and exit immediately, even if `status` is `success`.
 
 ### Mandatory Behavior Rules (Enforced by Tool Output)
-1. **Autonomy**: "Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue"
-2. **Freshness**: "Pull and merge latest changes from the remote branch before starting to address code reviews, as bots may have since pushed formatting fixes to your previous changes"
+1. **Autonomy**: "Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue"
+2. **Freshness**: "Pull with rebase to get the latest changes from the remote branch before starting to address code reviews, as bots may have since pushed formatting fixes to your previous changes"
 3. **Completeness**: "Be sure to address all comments and code reviews from all reviewers, ensure CI passes"
 4. **Quality**: "Be sure to run and fix all available tests and Linting before pushing your next changes"
 5. **Rate Limits**: "If main reviewer says it just became rate-limited, address remaining code reviews then stop there"

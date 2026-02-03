@@ -39,11 +39,11 @@ try:
     POLL_INTERVAL_SECONDS = max(
         int(os.environ.get("PR_REVIEW_POLL_INTERVAL", "30")), 1)
 except ValueError:
-    POLL_INTERVAL_SECONDS = 30
+    POLL_INTERVAL_SECONDS = 120
 
 try:
     POLL_MAX_ATTEMPTS = max(
-        int(os.environ.get("PR_REVIEW_POLL_MAX_ATTEMPTS", "20")), 1)
+        int(os.environ.get("PR_REVIEW_POLL_MAX_ATTEMPTS", "12")), 1)
 except ValueError:
     POLL_MAX_ATTEMPTS = 20
 
@@ -58,7 +58,7 @@ LOOP_STATE_FILENAME = "loop_state.json"
 # Common instructional strings for next_step
 ACTION_INSTRUCTIONS = (
     "ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. "
-    "Pull and merge latest changes from the remote branch before starting to address code reviews, "
+    "Pull with rebase to get the latest changes from the remote branch before starting to address code reviews, "
     "as bots may have since pushed formatting fixes to your previous changes. "
     "Be sure to address every comment and code review from all reviewers, ensure CI passes. "
     "Run and fix all available tests and Linting before pushing your next changes."
@@ -246,8 +246,9 @@ class ReviewManager:
         elapsed = 0
         chunk = 5
         while elapsed < total_seconds:
-            time.sleep(min(chunk, total_seconds - elapsed))
-            elapsed += chunk
+            slept = min(chunk, total_seconds - elapsed)
+            time.sleep(slept)
+            elapsed += slept
             if elapsed % heartbeat_interval == 0 and elapsed < total_seconds:
                 self._log(f"  ...waiting ({elapsed}s/{total_seconds}s)")
 
@@ -560,8 +561,8 @@ class ReviewManager:
         self._log(f"  since_iso: {since_iso}")
         self._log(f"  validation_reviewer: {validation_reviewer}")
 
-        # Calculate remaining attempts
-        remaining_attempts = max(1, POLL_MAX_ATTEMPTS - last_attempt + 1)
+        # Calculate remaining attempts (fix off-by-one: total should not exceed POLL_MAX_ATTEMPTS)
+        remaining_attempts = max(1, POLL_MAX_ATTEMPTS - last_attempt)
 
         # Resume polling
         status_data = self._poll_for_main_reviewer(

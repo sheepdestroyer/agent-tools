@@ -59,7 +59,7 @@ A Review Cycle is a **LOOP**, not a check.
 *   **No Idling**: Agents must actively monitor PR status. Do NOT exit/notify the user just to wait for a bot or a long process.
 *   **Polling Strategy**: Use GitHub MCP tools (`mcp_github_pull_request_read`) for reliable, non-blocking status polling. Wait ~3 minutes after triggering before first check, then poll every 2 minutes.
 *   **Autonomous Action**: Agents are AUTHORIZED and REQUIRED to `git commit` and `git push` fixes autonomously if tests pass. Do not ask the user to push for you.
-*   **Freshness**: Pull and merge latest changes from the remote branch before starting to address code reviews, as bots may have since pushed formatting fixes to your previous changes.
+*   **Freshness**: Pull with rebase to get the latest changes from the remote branch before starting to address code reviews, as bots may have since pushed formatting fixes to your previous changes.
 *   **Crash Recovery**: If you detect a previous loop state file exists (`loop_state.json`), run `resume` to continue polling rather than starting fresh. This prevents lost progress.
 *   **Self-Correction**: If a tool fails (e.g., specific monitoring script), fallback to GitHub MCP or raw `gh` commands immediately.
 

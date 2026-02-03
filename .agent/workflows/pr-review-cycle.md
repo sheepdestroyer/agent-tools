@@ -26,7 +26,7 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
     *   Wait **3 minutes** for bots to process, then return to Step 2.
 
 4.  **Analyze & Implement**
-    *   **Freshness**: Pull and merge latest changes from remote branch (bots may have pushed formatting fixes).
+    *   **Freshness**: Pull with rebase to get the latest changes from remote branch (bots may have pushed formatting fixes).
     *   **Completeness**: Address every comment and code review. Ensure CI passes.
     *   Review feedback and implement fixes for all valid issues.
     *   **Loop**: Return to Step 1 until "Ready to Merge".
