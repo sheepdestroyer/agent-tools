@@ -98,22 +98,16 @@ class ReviewManager:
             "GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
         if not self.token:
             # Fallback to gh CLI for auth token if env var is missing
-            gh_path = shutil.which("gh")
-            if gh_path is None:
+            if not GH_PATH:
                 print_error(
                     "No GITHUB_TOKEN found and 'gh' command not found in PATH.")
             try:
-                res = subprocess.run(
-                    [gh_path, "auth", "token"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    timeout=GH_AUTH_TIMEOUT,
-                )
+                res = self._run_gh_cmd(["auth", "token"])
                 self.token = res.stdout.strip()
             except (
                 subprocess.CalledProcessError,
                 subprocess.TimeoutExpired,
+                FileNotFoundError
             ) as e:
                 print_error(
                     f"No GITHUB_TOKEN found and 'gh' command failed: {e}")
@@ -142,17 +136,33 @@ class ReviewManager:
         # Tag logs as [AUDIT] for compliance and easier filtering
         print(f"[{timestamp}] [AUDIT] {message}", file=sys.stderr)
 
+    def _run_git_cmd(self, args, timeout=GIT_SHORT_TIMEOUT, check=True):
+        """Helper to run git commands securely."""
+        return subprocess.run(
+            [GIT_PATH] + args,
+            capture_output=True,
+            text=True,
+            check=check,
+            timeout=timeout,
+        )
+
+    def _run_gh_cmd(self, args, timeout=GH_AUTH_TIMEOUT):
+        """Helper to run gh commands securely."""
+        if not GH_PATH:
+            raise FileNotFoundError("gh command not found")
+        return subprocess.run(
+            [GH_PATH] + args,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=timeout,
+        )
+
     def _ensure_workspace(self):
         """Creates agent-workspace directory relative to repo root if possible."""
         try:
             # Try to find repo root
-            root = subprocess.run(
-                [GIT_PATH, "rev-parse", "--show-toplevel"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=GIT_SHORT_TIMEOUT,
-            ).stdout.strip()
+            root = self._run_git_cmd(["rev-parse", "--show-toplevel"]).stdout.strip()
             if os.path.basename(root) == "agent-tools":
                 self.workspace = os.path.join(root, "agent-workspace")
             else:
@@ -171,13 +181,7 @@ class ReviewManager:
         # 1. Try local git remote first (fast, no network)
         try:
             # Get origin URL
-            res = subprocess.run(
-                [GIT_PATH, "config", "--get", "remote.origin.url"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=GIT_SHORT_TIMEOUT,
-            )
+            res = self._run_git_cmd(["config", "--get", "remote.origin.url"])
             url = res.stdout.strip()
 
             # Extract owner/repo using regex
@@ -198,15 +202,7 @@ class ReviewManager:
 
         # 2. Fallback to gh CLI (slower, network dependent)
         try:
-            if not GH_PATH:
-                raise FileNotFoundError("gh command not found")
-            res = subprocess.run(
-                [GH_PATH, "repo", "view", "--json", "owner,name"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=GH_REPO_VIEW_TIMEOUT,
-            )
+            res = self._run_gh_cmd(["repo", "view", "--json", "owner,name"], timeout=GH_REPO_VIEW_TIMEOUT)
             data = json.loads(res.stdout)
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
@@ -280,13 +276,7 @@ class ReviewManager:
         """
         try:
             # 1. Check for uncommitted changes
-            status_proc = subprocess.run(
-                [GIT_PATH, "status", "--porcelain"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=GIT_SHORT_TIMEOUT,
-            )
+            status_proc = self._run_git_cmd(["status", "--porcelain"])
             if status_proc.stdout.strip():
                 return (
                     False,
@@ -294,13 +284,7 @@ class ReviewManager:
                 )
 
             # 2. Get current branch
-            branch_proc = subprocess.run(
-                [GIT_PATH, "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=GIT_SHORT_TIMEOUT,
-            )
+            branch_proc = self._run_git_cmd(["rev-parse", "--abbrev-ref", "HEAD"])
             branch = branch_proc.stdout.strip()
             if branch == "HEAD":
                 return False, "Detached HEAD state detected. Please checkout a branch."
@@ -336,21 +320,11 @@ class ReviewManager:
             )
 
             # Get current branch
-            branch = subprocess.run(
-                [GIT_PATH, "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=GIT_SHORT_TIMEOUT,
-            ).stdout.strip()
+            branch = self._run_git_cmd(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
 
             # Check if upstream is configured
-            upstream_proc = subprocess.run(
-                [GIT_PATH, "rev-parse", "--abbrev-ref", "@{u}"],
-                capture_output=True,
-                text=True,
-                check=False,  # Intentionally check returncode manually
-                timeout=GIT_SHORT_TIMEOUT,
+            upstream_proc = self._run_git_cmd(
+                ["rev-parse", "--abbrev-ref", "@{u}"], check=False
             )
             if upstream_proc.returncode != 0:
                 return (
@@ -361,13 +335,8 @@ class ReviewManager:
             # Check for unpushed commits and upstream changes
             # git rev-list --left-right --count @{u}...HEAD
             # Output: "behind  ahead" (left=@{u}, right=HEAD)
-            rev_list = subprocess.run(
-                [GIT_PATH, "rev-list", "--left-right",
-                    "--count", "@{u}...HEAD"],
-                capture_output=True,
-                text=True,
-                check=False,  # Intentionally check returncode manually
-                timeout=GIT_SHORT_TIMEOUT,
+            rev_list = self._run_git_cmd(
+                ["rev-list", "--left-right", "--count", "@{u}...HEAD"], check=False
             )
             if rev_list.returncode == 0:
                 try:
@@ -420,12 +389,8 @@ class ReviewManager:
 
         # Separately check upstream
         try:
-            upstream_proc = subprocess.run(
-                [GIT_PATH, "rev-parse", "--abbrev-ref", "@{u}"],
-                capture_output=True,
-                text=True,
-                check=False,  # Intentionally check returncode manually
-                timeout=GIT_SHORT_TIMEOUT,
+            upstream_proc = self._run_git_cmd(
+                ["rev-parse", "--abbrev-ref", "@{u}"], check=False
             )
             if upstream_proc.returncode != 0:
                 return {
@@ -445,8 +410,7 @@ class ReviewManager:
 
         # Attempt push
         try:
-            subprocess.run([GIT_PATH, "push"], check=True,
-                           timeout=GIT_PUSH_TIMEOUT)
+            self._run_git_cmd(["push"], timeout=GIT_PUSH_TIMEOUT)
             return {
                 "status": "success",
                 "message": "Push successful.",
