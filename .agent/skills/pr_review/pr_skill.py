@@ -7,12 +7,14 @@ Outputs JSON to stdout for easy parsing by agents.
 
 import argparse
 import json
+import shlex
 import os
 import re
 import shutil
 import subprocess
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 
 from github import Auth, Github, GithubException
@@ -33,17 +35,8 @@ GIT_PUSH_TIMEOUT = 60
 GH_AUTH_TIMEOUT = 10
 GH_REPO_VIEW_TIMEOUT = 30
 
-# Resolve git binary path for security (BAN-B607)
+# Resolve binary paths (BAN-B607) - Check existence in methods or main
 GIT_PATH = shutil.which("git")
-if not GIT_PATH:
-    print(
-        json.dumps(
-            {"status": "error", "message": "git command not found in PATH."}),
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-# Resolve gh binary path for security (BAN-B607)
 GH_PATH = shutil.which("gh")
 
 # Polling constants for review feedback
@@ -139,6 +132,8 @@ class ReviewManager:
     @staticmethod
     def _run_git_cmd(args, timeout=GIT_SHORT_TIMEOUT, check=True):
         """Helper to run git commands securely."""
+        if not GIT_PATH:
+             raise FileNotFoundError("git command not found")
         return subprocess.run(
             [GIT_PATH] + args,
             capture_output=True,
@@ -608,10 +603,6 @@ class ReviewManager:
                 f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually."
             )
 
-        self._log(f"State verified: {msg}")
-
-        self._log(f"State verified: {msg}")
-
         # Step 2: Trigger Bots
         triggered_bots = []
         try:
@@ -637,7 +628,7 @@ class ReviewManager:
                 "message": "Reviews triggered successfully. Bot is now waiting for feedback.",
                 "triggered_bots": triggered_bots,
                 "initial_status": None,
-                "next_step": f"WAIT 180 seconds (for bots to run), then run 'status' to poll for {validation_reviewer}'s review.",
+                "next_step": f"WAIT {wait_seconds} seconds (for bots to run), then run 'status' to poll for {validation_reviewer}'s review.",
             }
 
         except GithubException as e:
