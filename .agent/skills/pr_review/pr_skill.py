@@ -886,7 +886,16 @@ class ReviewManager:
                 else:
                     next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
             elif new_feedback:
-                next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
+                # Count explicitly addressable comments (inline + issue comments)
+                # This ensures we don't miss "Medium priority" nits even if the review summary is positive
+                comment_count = sum(
+                    1 for item in new_feedback
+                    if item.get("type") in ["inline_comment", "issue_comment"]
+                )
+                if comment_count > 0:
+                    next_step = f"{comment_count} new comments received. {ACTION_INSTRUCTIONS}"
+                else:
+                    next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
             else:
                 next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
             output = {
