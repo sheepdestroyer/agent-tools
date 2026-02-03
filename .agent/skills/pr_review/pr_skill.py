@@ -43,6 +43,9 @@ if not GIT_PATH:
     )
     sys.exit(1)
 
+# Resolve gh binary path for security (BAN-B607)
+GH_PATH = shutil.which("gh")
+
 # Polling constants for review feedback
 # Configurable via environment variables
 try:
@@ -132,7 +135,8 @@ class ReviewManager:
             return text
         return text.replace(self.token, "********")
 
-    def _log(self, message):
+    @staticmethod
+    def _log(message):
         """Audit logging to stderr with timestamp."""
         timestamp = datetime.now(timezone.utc).isoformat()
         # Tag logs as [AUDIT] for compliance and easier filtering
@@ -194,8 +198,10 @@ class ReviewManager:
 
         # 2. Fallback to gh CLI (slower, network dependent)
         try:
+            if not GH_PATH:
+                raise FileNotFoundError("gh command not found")
             res = subprocess.run(
-                ["gh", "repo", "view", "--json", "owner,name"],
+                [GH_PATH, "repo", "view", "--json", "owner,name"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -207,7 +213,6 @@ class ReviewManager:
         except (
             subprocess.CalledProcessError,
             FileNotFoundError,
-            json.JSONDecodeError,
             ValueError,
         ):
             raise RuntimeError(
@@ -682,15 +687,10 @@ class ReviewManager:
                 "message": message,
                 "triggered_bots": triggered_bots,
                 "initial_status": status_data,
-<<<<<<< HEAD
-<<<<<<< HEAD
-                "next_step": status_data.get("next_step", "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue ")
-=======
                 "next_step": status_data.get(
                     "next_step",
                     "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue.",
                 ),
->>>>>>> 573a137 (style: format code with Autopep8, Black, isort, Ruff Formatter and Yapf)
             }
 
         except GithubException as e:
@@ -714,221 +714,225 @@ class ReviewManager:
                 return None
             if dt_obj.tzinfo is None:
                 return dt_obj.replace(tzinfo=timezone.utc)
+        return dt_obj.astimezone(timezone.utc)
+
+    def _get_since_dt(self, since_iso):
+        """Helper to parse since_iso into a timezone-aware datetime."""
+        since_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        if since_iso:
+            try:
+                # Handle Z suffix manually for older Python versions
+                if since_iso.endswith("Z"):
+                    since_iso = since_iso[:-1] + "+00:00"
+                parsed_dt = datetime.fromisoformat(since_iso)
+                if parsed_dt.tzinfo is None:
+                    parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
+                since_dt = parsed_dt
+            except ValueError:
+                self._log(f"Warning: Invalid timestamp {since_iso}, ignoring.")
+        return since_dt
+
+    def _analyze_main_reviewer(self, reviews, validation_reviewer):
+        """
+        Analyze reviews to determine main reviewer state and last approval time.
+        Returns: (main_reviewer_state, main_reviewer_last_approval_dt)
+        """
+        main_reviewer_state = "PENDING"
+        main_reviewer_last_approval_dt = None
+        found_latest_state = False
+
+        def get_aware_utc_datetime(dt_obj):
+             if dt_obj is None: return None
+             if dt_obj.tzinfo is None: return dt_obj.replace(tzinfo=timezone.utc)
+             return dt_obj.astimezone(timezone.utc)
+
+        # Single pass: find latest state AND most recent approval timestamp
+        for review in reversed(reviews):
+            if review.user.login == validation_reviewer:
+                if not found_latest_state:
+                    main_reviewer_state = review.state
+                    found_latest_state = True
+
+                if (
+                    main_reviewer_last_approval_dt is None
+                    and review.state == "APPROVED"
+                ):
+                    main_reviewer_last_approval_dt = get_aware_utc_datetime(
+                        review.submitted_at
+                    )
+
+                # Exit early if both are found
+                if found_latest_state and main_reviewer_last_approval_dt is not None:
+                    break
+        
+        return main_reviewer_state, main_reviewer_last_approval_dt
+
+    def _check_new_main_reviewer_comments(
+        self, new_feedback, validation_reviewer, last_approval_dt
+    ):
+        """Check if there are new comments from the main reviewer AFTER their last approval."""
+        if not last_approval_dt:
+            return False
+
+        def get_aware_utc_datetime(dt_obj):
+            if dt_obj is None: return None
+            if dt_obj.tzinfo is None: return dt_obj.replace(tzinfo=timezone.utc)
+            return dt_obj.astimezone(timezone.utc)
+
+        for item in new_feedback:
+            is_main_reviewer = item.get("user") == validation_reviewer
+            is_comment = item.get("type") in ["issue_comment", "inline_comment"]
+            is_review_comment = (
+                item.get("type") == "review_summary"
+                and item.get("state") == "COMMENTED"
+            )
+
+            if is_main_reviewer and (is_comment or is_review_comment):
+                created_at_val = item.get("created_at")
+                if created_at_val:
+                    try:
+                        # Handle Z suffix manually
+                        if created_at_val.endswith("Z"):
+                            created_at_val = created_at_val[:-1] + "+00:00"
+                        dt_val = datetime.fromisoformat(created_at_val)
+                        comment_dt = get_aware_utc_datetime(dt_val)
+
+                        if comment_dt >= last_approval_dt:
+                            return True
+                    except (ValueError, TypeError) as e:
+                        self._log(
+                            f"Warning: Could not parse date '{created_at_val}'. Error: {e}. Skipping item."
+                        )
+                        continue
+        return False
+
+    def _determine_next_step(
+        self,
+        new_feedback,
+        validation_reviewer,
+        main_reviewer_state,
+        has_changes_requested,
+        has_new_main_comments,
+    ):
+        """Generate the next_step instruction string."""
+        if has_changes_requested:
+            return f"CRITICAL: Changes requested by reviewer. {ACTION_INSTRUCTIONS}{RATE_LIMIT_INSTRUCTION}"
+        elif has_new_main_comments:
+            return f"New comments from {validation_reviewer} after approval. {ACTION_INSTRUCTIONS}{RATE_LIMIT_INSTRUCTION}"
+        elif main_reviewer_state == "APPROVED":
+            other_feedback = [
+                item
+                for item in new_feedback
+                if not (
+                    item.get("user") == validation_reviewer
+                    and item.get("type") == "review_summary"
+                    and item.get("state") == "APPROVED"
+                )
+            ]
+            if other_feedback:
+                return f"New feedback received. {ACTION_INSTRUCTIONS}"
+            else:
+                return "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
+        elif new_feedback:
+            # Count explicitly addressable comments
+            comment_count = sum(
+                1
+                for item in new_feedback
+                if item.get("type") in ["inline_comment", "issue_comment"]
+            )
+            if comment_count > 0:
+                return f"{comment_count} new comments received. {ACTION_INSTRUCTIONS}"
+            else:
+                return f"New feedback received. {ACTION_INSTRUCTIONS}"
+        else:
+            return f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
+
+    def check_status(
+        self,
+        pr_number,
+        since_iso=None,
+        return_data=False,
+        validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
+    ):
+        """
+        Checks the status of the PR.
+        If since_iso is provided, filters for events strictly AFTER that time.
+        """
+        def get_aware_utc_datetime(dt_obj):
+            if dt_obj is None: return None
+            if dt_obj.tzinfo is None: return dt_obj.replace(tzinfo=timezone.utc)
             return dt_obj.astimezone(timezone.utc)
 
         try:
             pr = self.repo.get_pull(pr_number)
-
-            since_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
-            if since_iso:
-                try:
-                    if since_iso.endswith("Z"):
-                        since_iso = since_iso[:-1] + "+00:00"
-                    since_dt = datetime.fromisoformat(since_iso)
-                    if since_dt.tzinfo is None:
-                        since_dt = since_dt.replace(tzinfo=timezone.utc)
-                except ValueError:
-                    # Log warning but continue
-                    print(
-                        f"[{datetime.now(timezone.utc).isoformat()}] [AUDIT] Warning: Invalid timestamp {since_iso}, ignoring.",
-                        file=sys.stderr,
-                    )
-
-            # Fetch comments (paginated by PyGithub automatically)
+            since_dt = self._get_since_dt(since_iso)
             new_feedback = []
 
-            # 1. Issue Comments (General)
+            # 1. Issue Comments
             issue = self.repo.get_issue(pr_number)
             for comment in issue.get_comments(since=since_dt):
-                new_feedback.append(
-                    {
-                        "type": "issue_comment",
-                        "user": comment.user.login,
-                        "body": comment.body,
-                        "url": comment.html_url,
-                        "updated_at": (
-                            get_aware_utc_datetime(
-                                comment.updated_at).isoformat()
-                            if comment.updated_at
-                            else None
-                        ),
-                        "created_at": get_aware_utc_datetime(
-                            comment.created_at
-                        ).isoformat(),
-                    }
-                )
+                new_feedback.append({
+                    "type": "issue_comment",
+                    "user": comment.user.login,
+                    "body": comment.body,
+                    "url": comment.html_url,
+                    "updated_at": (get_aware_utc_datetime(comment.updated_at).isoformat() if comment.updated_at else None),
+                    "created_at": get_aware_utc_datetime(comment.created_at).isoformat(),
+                })
 
-            # 2. Review Comments (Inline)
-            # Fetch all review comments to ensure we catch edits (since param might only check creation time)
+            # 2. Review Comments
             for comment in pr.get_review_comments():
-                # Use updated_at to catch edits
                 comment_dt = get_aware_utc_datetime(comment.updated_at)
                 if comment_dt and comment_dt >= since_dt:
-                    new_feedback.append(
-                        {
-                            "type": "inline_comment",
-                            "user": comment.user.login,
-                            "body": comment.body,
-                            "path": comment.path,
-                            "line": comment.line,
-                            "created_at": (
-                                get_aware_utc_datetime(
-                                    comment.created_at).isoformat()
-                                if comment.created_at
-                                else None
-                            ),
-                            "updated_at": comment_dt.isoformat(),
-                            "url": comment.html_url,
-                        }
-                    )
+                    new_feedback.append({
+                        "type": "inline_comment",
+                        "user": comment.user.login,
+                        "body": comment.body,
+                        "path": comment.path,
+                        "line": comment.line,
+                        "created_at": (get_aware_utc_datetime(comment.created_at).isoformat() if comment.created_at else None),
+                        "updated_at": comment_dt.isoformat(),
+                        "url": comment.html_url,
+                    })
 
-            # 3. Reviews (Approvals/changes requested) - Filter locally
-            # Materialize list for multiple iteration
+            # 3. Reviews
             reviews = list(pr.get_reviews())
             for review in reviews:
-                if (
-                    review.submitted_at
-                ):  # Ensure submitted_at is not None before processing
+                if review.submitted_at:
                     review_dt = get_aware_utc_datetime(review.submitted_at)
                     if review_dt and review_dt >= since_dt:
-                        new_feedback.append(
-                            {
-                                "type": "review_summary",
-                                "user": review.user.login,
-                                "state": review.state,
-                                "body": review.body,
-                                "created_at": review_dt.isoformat(),
-                            }
-                        )
+                        new_feedback.append({
+                            "type": "review_summary",
+                            "user": review.user.login,
+                            "state": review.state,
+                            "body": review.body,
+                            "created_at": review_dt.isoformat(),
+                        })
 
-            # Determine next_step based on findings AND validation_reviewer
-            next_step = "Wait for reviews."
-            has_changes_requested = any(
-                item.get("state") == "CHANGES_REQUESTED"
-                for item in new_feedback
-                if item.get("type") == "review_summary"
+            # Analysis
+            main_state, last_approval = self._analyze_main_reviewer(reviews, validation_reviewer)
+            
+            has_conflicts = any(item.get("state") == "CHANGES_REQUESTED" and item.get("type") == "review_summary" for item in new_feedback)
+            has_new_main_comments = self._check_new_main_reviewer_comments(new_feedback, validation_reviewer, last_approval)
+
+            next_step = self._determine_next_step(
+                new_feedback, validation_reviewer, main_state, has_conflicts, has_new_main_comments
             )
 
-            # Check Main Reviewer Status
-            # Track latest state AND most recent approval separately
-            # (fixes bug where APPROVED -> COMMENTED leaves approval_dt as None)
-            main_reviewer_state = "PENDING"
-            main_reviewer_last_approval_dt = None
-
-            # Single pass: find latest state AND most recent approval timestamp
-            found_latest_state = False
-            for review in reversed(reviews):
-                if review.user.login == validation_reviewer:
-                    if not found_latest_state:
-                        main_reviewer_state = review.state
-                        found_latest_state = True
-
-                    if (
-                        main_reviewer_last_approval_dt is None
-                        and review.state == "APPROVED"
-                    ):
-                        main_reviewer_last_approval_dt = get_aware_utc_datetime(
-                            review.submitted_at
-                        )
-
-                    # Exit early if both are found
-                    if (
-                        found_latest_state
-                        and main_reviewer_last_approval_dt is not None
-                    ):
-                        break
-
-            # Check for comments from main_reviewer AFTER approval
-            # Note: Only check if approval exists, not if current state is APPROVED
-            # (fixes bug where APPROVED -> COMMENTED was not detected)
-            has_new_main_reviewer_comments = False
-            if main_reviewer_last_approval_dt:
-                for item in new_feedback:
-                    # Check for issue_comment, inline_comment, OR review comments (state=COMMENTED)
-                    is_main_reviewer = item.get("user") == validation_reviewer
-                    is_comment = item.get("type") in [
-                        "issue_comment", "inline_comment"]
-                    is_review_comment = (
-                        item.get("type") == "review_summary"
-                        and item.get("state") == "COMMENTED"
-                    )
-
-                    if is_main_reviewer and (is_comment or is_review_comment):
-                        # Use helper for consistent parsing
-                        # Only use created_at to avoid treating edits (updated_at) of old comments as new feedback
-                        created_at_val = item.get("created_at")
-                        if created_at_val:
-                            try:
-                                # created_at is always an ISO string from our processing
-                                # Handle Z suffix for Python < 3.11 compatibility
-                                dt_val = datetime.fromisoformat(
-                                    created_at_val.replace("Z", "+00:00")
-                                )
-                                comment_dt = get_aware_utc_datetime(dt_val)
-
-                                # Use >= to catch comments made at the exact same second
-                                if comment_dt >= main_reviewer_last_approval_dt:
-                                    has_new_main_reviewer_comments = True
-                                    break
-                            except (ValueError, TypeError) as e:
-                                self._log(
-                                    f"Warning: Could not parse date '{created_at_val}'. Error: {e}. Skipping item."
-                                )
-                                continue
-
-            if has_changes_requested:
-                next_step = f"CRITICAL: Changes requested by reviewer. {ACTION_INSTRUCTIONS}{RATE_LIMIT_INSTRUCTION}"
-            elif has_new_main_reviewer_comments:
-                next_step = f"New comments from {validation_reviewer} after approval. {ACTION_INSTRUCTIONS}{RATE_LIMIT_INSTRUCTION}"
-            elif main_reviewer_state == "APPROVED":
-                # Check if there's any OTHER feedback besides the main reviewer's approval
-                other_feedback = [
-                    item
-                    for item in new_feedback
-                    if not (
-                        item.get("user") == validation_reviewer
-                        and item.get("type") == "review_summary"
-                        and item.get("state") == "APPROVED"
-                    )
-                ]
-                if other_feedback:
-                    next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
-                else:
-                    next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
-            elif new_feedback:
-                # Count explicitly addressable comments (inline + issue comments)
-                # This ensures we don't miss "Medium priority" nits even if the review summary is positive
-                comment_count = sum(
-                    1
-                    for item in new_feedback
-                    if item.get("type") in ["inline_comment", "issue_comment"]
-                )
-                if comment_count > 0:
-                    next_step = (
-                        f"{comment_count} new comments received. {ACTION_INSTRUCTIONS}"
-                    )
-                else:
-                    next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
-            else:
-                next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
             output = {
                 "status": "success",
                 "pr_number": pr_number,
                 "checked_at_utc": datetime.now(timezone.utc).isoformat(),
                 "new_item_count": len(new_feedback),
                 "items": new_feedback,
-                "main_reviewer": {
-                    "user": validation_reviewer,
-                    "state": main_reviewer_state,
-                },
+                "main_reviewer": {"user": validation_reviewer, "state": main_state},
                 "next_step": next_step,
             }
 
             if return_data:
                 return output
-            else:
-                print_json(output)
-                return output
+            print_json(output)
+            return output
 
         except GithubException as e:
             if return_data:
