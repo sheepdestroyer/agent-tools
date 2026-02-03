@@ -226,7 +226,10 @@ class ReviewManager:
             "last_status": "polling",
         }
         try:
-            with open(self.loop_state_file, "w") as f:
+            # Use os.open with O_CREAT and O_TRUNC to prevent following symlinks if file exists
+            # This mitigates CWE-59 symlink attacks in shared directories
+            fd = os.open(self.loop_state_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
                 json.dump(state, f, indent=2)
         except OSError as e:
             self._log(f"Warning: Could not save loop state: {e}")
@@ -461,6 +464,7 @@ class ReviewManager:
         validation_reviewer,
         max_attempts=None,
         poll_interval=None,
+        start_attempt=1,
     ):
         """
         Polls until the main reviewer has provided feedback since the given timestamp.
@@ -476,13 +480,14 @@ class ReviewManager:
         # Initialize status_data to handle edge case where max_attempts is 0 or loop is interrupted
         status_data = None
 
-        for attempt in range(1, max_attempts + 1):
+        for i in range(max_attempts):
+            attempt = start_attempt + i
             try:
                 # Save state for crash recovery
                 self._save_loop_state(
                     pr_number, since_iso, validation_reviewer, attempt
                 )
-                self._log(f"Poll attempt {attempt}/{max_attempts}...")
+                self._log(f"Poll attempt {attempt} (resume+{i+1}) / max {POLL_MAX_ATTEMPTS}...")
 
                 # Get current status
                 status_data = self.check_status(
@@ -584,6 +589,7 @@ class ReviewManager:
             since_iso=since_iso,
             validation_reviewer=validation_reviewer,
             max_attempts=remaining_attempts,
+            start_attempt=last_attempt + 1,
         )
 
         return {
@@ -638,7 +644,7 @@ class ReviewManager:
                     f"Auto-waiting {wait_seconds} seconds for initial bot responses..."
                 )
                 try:
-                    time.sleep(wait_seconds)
+                    self._interruptible_sleep(wait_seconds)
                 except KeyboardInterrupt:
                     self._log(
                         "\nWait interrupted. Checking status immediately...")
