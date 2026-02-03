@@ -922,8 +922,10 @@ class ReviewManager:
 
             # 1. Fetch all feedback types
             issue_comments = self._fetch_issue_comments(pr_number, since_dt)
-            review_comments = ReviewManager._fetch_review_comments(pr, since_dt)
-            reviews, all_reviews_objects = ReviewManager._fetch_reviews(pr, since_dt)
+            review_comments = ReviewManager._fetch_review_comments(
+                pr, since_dt)
+            reviews, all_reviews_objects = ReviewManager._fetch_reviews(
+                pr, since_dt)
 
             # Combine new feedback
             new_feedback = issue_comments + review_comments + reviews
