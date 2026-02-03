@@ -33,6 +33,12 @@ GIT_PUSH_TIMEOUT = 60
 GH_AUTH_TIMEOUT = 10
 GH_REPO_VIEW_TIMEOUT = 30
 
+# Resolve git binary path for security (BAN-B607)
+GIT_PATH = shutil.which("git")
+if not GIT_PATH:
+    print(json.dumps({"status": "error", "message": "git command not found in PATH."}), file=sys.stderr)
+    sys.exit(1)
+
 # Polling constants for review feedback
 # Configurable via environment variables
 try:
@@ -133,7 +139,7 @@ class ReviewManager:
         try:
             # Try to find repo root
             root = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
+                [GIT_PATH, "rev-parse", "--show-toplevel"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -158,7 +164,7 @@ class ReviewManager:
         try:
             # Get origin URL
             res = subprocess.run(
-                ["git", "config", "--get", "remote.origin.url"],
+                [GIT_PATH, "config", "--get", "remote.origin.url"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -260,7 +266,7 @@ class ReviewManager:
         try:
             # 1. Check for uncommitted changes
             status_proc = subprocess.run(
-                ["git", "status", "--porcelain"],
+                [GIT_PATH, "status", "--porcelain"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -274,7 +280,7 @@ class ReviewManager:
 
             # 2. Get current branch
             branch_proc = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                [GIT_PATH, "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -308,7 +314,7 @@ class ReviewManager:
             # Fetch latest state from remote for accurate comparison
             # Suppress stdout to avoid polluting structured output; inherit stderr so prompts/hangs remain visible
             subprocess.run(
-                ["git", "fetch"],
+                [GIT_PATH, "fetch"],
                 check=True,
                 timeout=GIT_FETCH_TIMEOUT,
                 stdout=subprocess.DEVNULL,
@@ -316,7 +322,7 @@ class ReviewManager:
 
             # Get current branch
             branch = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                [GIT_PATH, "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -325,9 +331,10 @@ class ReviewManager:
 
             # Check if upstream is configured
             upstream_proc = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "@{u}"],
+                [GIT_PATH, "rev-parse", "--abbrev-ref", "@{u}"],
                 capture_output=True,
                 text=True,
+                check=False,  # Intentionally check returncode manually
                 timeout=GIT_SHORT_TIMEOUT,
             )
             if upstream_proc.returncode != 0:
@@ -340,9 +347,10 @@ class ReviewManager:
             # git rev-list --left-right --count @{u}...HEAD
             # Output: "behind  ahead" (left=@{u}, right=HEAD)
             rev_list = subprocess.run(
-                ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
+                [GIT_PATH, "rev-list", "--left-right", "--count", "@{u}...HEAD"],
                 capture_output=True,
                 text=True,
+                check=False,  # Intentionally check returncode manually
                 timeout=GIT_SHORT_TIMEOUT,
             )
             if rev_list.returncode == 0:
@@ -397,9 +405,10 @@ class ReviewManager:
         # Separately check upstream
         try:
             upstream_proc = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "@{u}"],
+                [GIT_PATH, "rev-parse", "--abbrev-ref", "@{u}"],
                 capture_output=True,
                 text=True,
+                check=False,  # Intentionally check returncode manually
                 timeout=GIT_SHORT_TIMEOUT,
             )
             if upstream_proc.returncode != 0:
@@ -420,7 +429,7 @@ class ReviewManager:
 
         # Attempt push
         try:
-            subprocess.run(["git", "push"], check=True,
+            subprocess.run([GIT_PATH, "push"], check=True,
                            timeout=GIT_PUSH_TIMEOUT)
             return {
                 "status": "success",
