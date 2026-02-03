@@ -836,32 +836,51 @@ class ReviewManager:
         issue = self.repo.get_issue(pr_number)
         comments = []
         for comment in issue.get_comments(since=since_dt):
-            comments.append({
-                "type": "issue_comment",
-                "user": comment.user.login,
-                "body": comment.body,
-                "url": comment.html_url,
-                "updated_at": (ReviewManager._get_aware_utc_datetime(comment.updated_at).isoformat() if comment.updated_at else None),
-                "created_at": ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat(),
-            })
+            comments.append(
+                {
+                    "type": "issue_comment",
+                    "user": comment.user.login,
+                    "body": comment.body,
+                    "url": comment.html_url,
+                    "updated_at": (
+                        ReviewManager._get_aware_utc_datetime(
+                            comment.updated_at
+                        ).isoformat()
+                        if comment.updated_at
+                        else None
+                    ),
+                    "created_at": ReviewManager._get_aware_utc_datetime(
+                        comment.created_at
+                    ).isoformat(),
+                }
+            )
         return comments
 
     def _fetch_review_comments(self, pr, since_dt):
         """Fetch and format review (inline) comments."""
         comments = []
         for comment in pr.get_review_comments():
-            comment_dt = ReviewManager._get_aware_utc_datetime(comment.updated_at)
+            comment_dt = ReviewManager._get_aware_utc_datetime(
+                comment.updated_at)
             if comment_dt and comment_dt >= since_dt:
-                comments.append({
-                    "type": "inline_comment",
-                    "user": comment.user.login,
-                    "body": comment.body,
-                    "path": comment.path,
-                    "line": comment.line,
-                    "created_at": (ReviewManager._get_aware_utc_datetime(comment.created_at).isoformat() if comment.created_at else None),
-                    "updated_at": comment_dt.isoformat(),
-                    "url": comment.html_url,
-                })
+                comments.append(
+                    {
+                        "type": "inline_comment",
+                        "user": comment.user.login,
+                        "body": comment.body,
+                        "path": comment.path,
+                        "line": comment.line,
+                        "created_at": (
+                            ReviewManager._get_aware_utc_datetime(
+                                comment.created_at
+                            ).isoformat()
+                            if comment.created_at
+                            else None
+                        ),
+                        "updated_at": comment_dt.isoformat(),
+                        "url": comment.html_url,
+                    }
+                )
         return comments
 
     def _fetch_reviews(self, pr, since_dt):
@@ -870,15 +889,18 @@ class ReviewManager:
         all_reviews_objects = list(pr.get_reviews())
         for review in all_reviews_objects:
             if review.submitted_at:
-                review_dt = ReviewManager._get_aware_utc_datetime(review.submitted_at)
+                review_dt = ReviewManager._get_aware_utc_datetime(
+                    review.submitted_at)
                 if review_dt and review_dt >= since_dt:
-                    reviews_data.append({
-                        "type": "review_summary",
-                        "user": review.user.login,
-                        "state": review.state,
-                        "body": review.body,
-                        "created_at": review_dt.isoformat(),
-                    })
+                    reviews_data.append(
+                        {
+                            "type": "review_summary",
+                            "user": review.user.login,
+                            "state": review.state,
+                            "body": review.body,
+                            "created_at": review_dt.isoformat(),
+                        }
+                    )
         return reviews_data, all_reviews_objects
 
     def check_status(
@@ -895,7 +917,7 @@ class ReviewManager:
         try:
             pr = self.repo.get_pull(pr_number)
             since_dt = self._get_since_dt(since_iso)
-            
+
             # 1. Fetch all feedback types
             issue_comments = self._fetch_issue_comments(pr_number, since_dt)
             review_comments = self._fetch_review_comments(pr, since_dt)
