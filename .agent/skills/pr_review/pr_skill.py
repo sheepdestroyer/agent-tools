@@ -691,7 +691,7 @@ class ReviewManager:
         pr_number,
         since_iso=None,
         return_data=False,
-        validation_reviewer="gemini-code-assist[bot]",
+        validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
     ):
         """
         Stateless check of PR feedback using PyGithub.
