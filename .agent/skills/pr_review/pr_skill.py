@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -81,9 +82,13 @@ class ReviewManager:
             "GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
         if not self.token:
             # Fallback to gh CLI for auth token if env var is missing
+            gh_path = shutil.which("gh")
+            if gh_path is None:
+                print_error(
+                    "No GITHUB_TOKEN found and 'gh' command not found in PATH.")
             try:
                 res = subprocess.run(
-                    ["gh", "auth", "token"],
+                    [gh_path, "auth", "token"],
                     capture_output=True,
                     text=True,
                     check=True,
@@ -92,7 +97,6 @@ class ReviewManager:
                 self.token = res.stdout.strip()
             except (
                 subprocess.CalledProcessError,
-                FileNotFoundError,
                 subprocess.TimeoutExpired,
             ) as e:
                 print_error(
@@ -130,6 +134,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 check=True,
+                timeout=GIT_SHORT_TIMEOUT,
             ).stdout.strip()
             if os.path.basename(root) == "agent-tools":
                 self.workspace = os.path.join(root, "agent-workspace")
@@ -555,7 +560,7 @@ class ReviewManager:
 =======
                 "next_step": status_data.get(
                     "next_step",
-                    "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. you must regularly poll for the main-reviewer's review until it eventually gets posted, then continue.",
+                    "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue.",
                 ),
 >>>>>>> 573a137 (style: format code with Autopep8, Black, isort, Ruff Formatter and Yapf)
             }
