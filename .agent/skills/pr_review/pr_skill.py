@@ -36,7 +36,11 @@ GH_REPO_VIEW_TIMEOUT = 30
 # Resolve git binary path for security (BAN-B607)
 GIT_PATH = shutil.which("git")
 if not GIT_PATH:
-    print(json.dumps({"status": "error", "message": "git command not found in PATH."}), file=sys.stderr)
+    print(
+        json.dumps(
+            {"status": "error", "message": "git command not found in PATH."}),
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 # Polling constants for review feedback
@@ -347,7 +351,8 @@ class ReviewManager:
             # git rev-list --left-right --count @{u}...HEAD
             # Output: "behind  ahead" (left=@{u}, right=HEAD)
             rev_list = subprocess.run(
-                [GIT_PATH, "rev-list", "--left-right", "--count", "@{u}...HEAD"],
+                [GIT_PATH, "rev-list", "--left-right",
+                    "--count", "@{u}...HEAD"],
                 capture_output=True,
                 text=True,
                 check=False,  # Intentionally check returncode manually
