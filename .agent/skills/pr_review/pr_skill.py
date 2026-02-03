@@ -856,7 +856,8 @@ class ReviewManager:
             )
         return comments
 
-    def _fetch_review_comments(self, pr, since_dt):
+    @staticmethod
+    def _fetch_review_comments(pr, since_dt):
         """Fetch and format review (inline) comments."""
         comments = []
         for comment in pr.get_review_comments():
@@ -883,7 +884,8 @@ class ReviewManager:
                 )
         return comments
 
-    def _fetch_reviews(self, pr, since_dt):
+    @staticmethod
+    def _fetch_reviews(pr, since_dt):
         """Fetch and format review summaries."""
         reviews_data = []
         all_reviews_objects = list(pr.get_reviews())
@@ -920,8 +922,8 @@ class ReviewManager:
 
             # 1. Fetch all feedback types
             issue_comments = self._fetch_issue_comments(pr_number, since_dt)
-            review_comments = self._fetch_review_comments(pr, since_dt)
-            reviews, all_reviews_objects = self._fetch_reviews(pr, since_dt)
+            review_comments = ReviewManager._fetch_review_comments(pr, since_dt)
+            reviews, all_reviews_objects = ReviewManager._fetch_reviews(pr, since_dt)
 
             # Combine new feedback
             new_feedback = issue_comments + review_comments + reviews
