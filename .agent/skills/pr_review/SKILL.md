@@ -30,20 +30,19 @@ A robust skill for managing the Pull Request review cycle with AI agents. This s
 
 ### Mandatory Behavior Rules (Enforced by Tool Output)
 1. **Autonomy**: "Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue"
-2. **Freshness**: "Pull with rebase to get the latest changes from the remote branch before starting to address code reviews, as bots may have since pushed formatting fixes to your previous changes"
-3. **Completeness**: "Be sure to address all comments and code reviews from all reviewers, ensure CI passes"
-4. **Quality**: "Be sure to run and fix all available tests and Linting before pushing your next changes"
-5. **Rate Limits**: "If main reviewer says it just became rate-limited, address remaining code reviews then stop there"
-6. **Prohibitions**: "Never merge or delete a branch on your own. If you believe the main reviewer said that the PR is ready, just stop and ask for human review"
-7. **Crash Recovery**: "If the loop dies unexpectedly, run `resume` to continue from the last checkpoint"
+2. **Polling**: "If the tool response says 'WAIT', you MUST wait the specified time (e.g., using your internal clock) and then run the 'status' command again. Do not rely on the script to wait for you."
+3. **Freshness**: "Pull with rebase to get the latest changes from the remote branch before starting to address code reviews, as bots may have since pushed formatting fixes to your previous changes"
+4. **Completeness**: "Be sure to address all comments and code reviews from all reviewers, ensure CI passes"
+5. **Quality**: "Be sure to run and fix all available tests and Linting before pushing your next changes"
+6. **Rate Limits**: "If main reviewer says it just became rate-limited, address remaining code reviews then stop there"
+7. **Prohibitions**: "Never merge or delete a branch on your own. If you believe the main reviewer said that the PR is ready, just stop and ask for human review"
 
 ## Loop Resilience
 
-The skill implements crash recovery to prevent lost progress:
+The skill is designed to be **non-blocking** and **stateless**:
 
-*   **State Persistence**: Loop state is saved to `agent-workspace/loop_state.json` after each poll cycle
-*   **Heartbeat Sleep**: Long waits are broken into 5-second chunks with progress output
-*   **Resume Command**: If the loop is interrupted, run `resume` to continue from the last checkpoint
+*   **Agent-Driven Polling**: The script will NOT block execution. It will return instructions like "WAIT 30s". The Agent must handle this wait and call `status` again.
+*   **State Persistence**: Loop state is saved to `agent-workspace/loop_state.json` to track context across calls.
 
 ## Tools
 

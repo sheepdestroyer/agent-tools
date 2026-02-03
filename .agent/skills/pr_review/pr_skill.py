@@ -624,51 +624,17 @@ class ReviewManager:
 
             self._log("All review bots triggered successfully.")
 
-            # Step 3: Poll for Main Reviewer Response (Enforce Loop Rule)
-            if wait_seconds > 0:
-                self._log("-" * 40)
-                self._log(
-                    f"Auto-waiting {wait_seconds} seconds for initial bot responses..."
-                )
-                try:
-                    self._interruptible_sleep(wait_seconds)
-                except KeyboardInterrupt:
-                    self._log(
-                        "\nWait interrupted. Checking status immediately...")
-
-                self._log("-" * 40)
-                self._log(
-                    "Polling for main reviewer feedback (enforcing Loop Rule)...")
-
-                # Poll until main reviewer responds or timeout
-                status_data = self._poll_for_main_reviewer(
-                    pr_number=pr_number,
-                    since_iso=start_time.isoformat(),
-                    validation_reviewer=validation_reviewer,
-                )
-            else:
-                status_data = {
-                    "status": "skipped",
-                    "message": "Initial status check skipped due to wait_seconds=0.",
-                }
-
-            message = "Triggered reviews."
-            if wait_seconds > 0 and not status_data.get("polling_interrupted"):
-                message = "Triggered reviews and polled for main reviewer feedback."
-            elif status_data.get("polling_interrupted"):
-                message = "Triggered reviews; polling was interrupted."
-            elif wait_seconds <= 0:
-                message = "Triggered reviews; polling was skipped."
-
+            # Step 3: Return Instructions (Non-Blocking)
+            # We no longer poll inside the script to avoid timeouts and blocking the agent.
+            # The agent must handle the wait and restart the cycle.
+            self._log(f"All reviews triggered. Expecting feedback from {validation_reviewer}...")
+            
             return {
-                "status": "success",
-                "message": message,
+                "status": "triggered",
+                "message": "Reviews triggered successfully. Bot is now waiting for feedback.",
                 "triggered_bots": triggered_bots,
-                "initial_status": status_data,
-                "next_step": status_data.get(
-                    "next_step",
-                    "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue.",
-                ),
+                "initial_status": None,
+                "next_step": f"WAIT 180 seconds (for bots to run), then run 'status' to poll for {validation_reviewer}'s review.",
             }
 
         except GithubException as e:
@@ -806,7 +772,7 @@ class ReviewManager:
             else:
                 return f"New feedback received. {ACTION_INSTRUCTIONS}"
         else:
-            return f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
+            return f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). WAIT 30 seconds, then run 'status' to check again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
 
     def _fetch_issue_comments(self, pr_number, since_dt):
         """Fetch and format issue comments."""
