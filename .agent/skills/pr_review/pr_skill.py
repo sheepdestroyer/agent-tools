@@ -627,8 +627,10 @@ class ReviewManager:
             # Step 3: Return Instructions (Non-Blocking)
             # We no longer poll inside the script to avoid timeouts and blocking the agent.
             # The agent must handle the wait and restart the cycle.
-            self._log(f"All reviews triggered. Expecting feedback from {validation_reviewer}...")
-            
+            self._log(
+                f"All reviews triggered. Expecting feedback from {validation_reviewer}..."
+            )
+
             return {
                 "status": "triggered",
                 "message": "Reviews triggered successfully. Bot is now waiting for feedback.",
