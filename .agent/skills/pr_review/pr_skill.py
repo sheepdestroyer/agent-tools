@@ -522,7 +522,6 @@ class ReviewManager:
                 ]
                 self._log(f"  Running offline reviewer: {' '.join(cmd)}")
                 try:
-                    import re
 
                     res = subprocess.run(cmd,
                                          check=True,
@@ -531,7 +530,7 @@ class ReviewManager:
                     clean_stdout = re.sub(
                         r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "",
                         res.stdout)
-                    self._log(f"Offline Review Feedback:\n{res.stdout}")
+                    self._log(f"Offline Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}")
                     if res.stderr:
                         self._log(
                             f"Offline Review Warnings/Errors:\n{res.stderr}")
@@ -561,7 +560,7 @@ class ReviewManager:
                                 datetime.now(timezone.utc).isoformat(),
                             }],
                             "main_reviewer": {
-                                "user": "gemini-cli-review",
+                                "user": validation_reviewer or "gemini-cli-review",
                                 "state": "COMMENTED",
                             },
                         },
