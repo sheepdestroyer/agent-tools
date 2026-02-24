@@ -494,13 +494,16 @@ class ReviewManager:
         3. Polls for main reviewer feedback.
         """
         # Step 1: Enforce Push
-        is_safe, msg = self._check_local_state()
-        if not is_safe:
-            print_error(
-                f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually."
-            )
+        if not offline:
+            is_safe, msg = self._check_local_state()
+            if not is_safe:
+                print_error(
+                    f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually."
+                )
 
-        self._log(f"State verified: {msg}")
+            self._log(f"State verified: {msg}")
+        else:
+            self._log("Offline mode: Skipping remote state checks.")
 
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
@@ -520,7 +523,7 @@ class ReviewManager:
                     "--prompt",
                     "/code-review",
                 ]
-                self._log(f"  Running offline reviewer: {' '.join(cmd)}")
+                self._log(f"  Running offline reviewer: {cmd}")
                 try:
                     res = subprocess.run(cmd,
                                          check=True,
