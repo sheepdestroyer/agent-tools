@@ -525,7 +525,8 @@ class ReviewManager:
                     res = subprocess.run(cmd,
                                          check=True,
                                          capture_output=True,
-                                         text=True)
+                                         text=True,
+                                         timeout=300)
                     clean_stdout = re.sub(
                         r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "",
                         res.stdout)
@@ -561,8 +562,7 @@ class ReviewManager:
                                 datetime.now(timezone.utc).isoformat(),
                             }],
                             "main_reviewer": {
-                                "user": validation_reviewer
-                                or "gemini-cli-review",
+                                "user": "gemini-cli-review",
                                 "state": "COMMENTED",
                             },
                         },
@@ -575,7 +575,7 @@ class ReviewManager:
                     )
                 except subprocess.CalledProcessError as e:
                     print_error(
-                        f"Offline reviewer failed:\nSTDERR: {e.stderr}\nSTDOUT: {e.stdout}"
+                        f"Offline reviewer failed:\nSTDERR: {self._mask_token(e.stderr)}\nSTDOUT: {self._mask_token(e.stdout)}"
                     )
             else:
                 pr = self.repo.get_pull(pr_number)
