@@ -522,26 +522,34 @@ class ReviewManager:
                 ]
                 self._log(f"  Running offline reviewer: {' '.join(cmd)}")
                 try:
+                    import re
                     res = subprocess.run(cmd,
                                          check=True,
                                          capture_output=True,
                                          text=True)
+                    clean_stdout = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', res.stdout)
                     self._log(f"Offline Review Feedback:\n{res.stdout}")
                     if res.stderr:
                         self._log(
                             f"Offline Review Warnings/Errors:\n{res.stderr}")
                     return {
-                        "status":
-                        "success",
-                        "pr_number":
-                        pr_number,
-                        "message":
-                        "Offline review completed locally.",
+                        "status": "success",
+                        "message": "Offline review completed locally.",
                         "triggered_bots": ["gemini-cli-review"],
-                        "feedback":
-                        res.stdout,
-                        "next_step":
-                        "Analyze the 'feedback' field in this response and implement fixes. Proceed directly to Step 4 (Analyze & Implement).",
+                        "initial_status": {
+                            "status": "success",
+                            "pr_number": pr_number,
+                            "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+                            "new_item_count": 1,
+                            "items": [{
+                                "type": "offline_review",
+                                "user": "gemini-cli-review",
+                                "body": clean_stdout,
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                            }],
+                            "main_reviewer": {"user": "gemini-cli-review", "state": "COMMENTED"}
+                        },
+                        "next_step": "Analyze the feedback in 'initial_status.items' and implement fixes. Proceed directly to Step 4 (Analyze & Implement)."
                     }
                 except FileNotFoundError as e:
                     print_error(
