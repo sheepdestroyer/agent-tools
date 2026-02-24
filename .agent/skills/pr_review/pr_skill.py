@@ -508,7 +508,9 @@ class ReviewManager:
 
             self._log(f"State verified: {msg}")
         else:
-            self._log("Offline mode: Local state clean. Skipping remote state checks.")
+            self._log(
+                "Offline mode: Local state clean. Skipping remote state checks."
+            )
 
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
