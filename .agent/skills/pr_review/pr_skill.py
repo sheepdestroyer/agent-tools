@@ -487,13 +487,13 @@ class ReviewManager:
         pr_number,
         wait_seconds=180,
         validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
-        offline=False,
     ):
         """
         1. Checks local state (Hard Constraint).
         2. Post comments to trigger bots or run offline reviewer.
         3. Polls for main reviewer feedback.
         """
+        offline = not hasattr(self, "repo")
         # Step 1: Enforce Push
         is_clean, clean_msg = self._verify_clean_git()
         if not is_clean:
@@ -552,7 +552,7 @@ class ReviewManager:
                         "success",
                         "message":
                         "Offline review completed locally.",
-                        "triggered_bots": ["gemini-cli-review"],
+                        "triggered_bots": ["/code-review"],
                         "initial_status": {
                             "status":
                             "success",
@@ -570,6 +570,8 @@ class ReviewManager:
                                 "body":
                                 clean_stdout,
                                 "created_at":
+                                datetime.now(timezone.utc).isoformat(),
+                                "updated_at":
                                 datetime.now(timezone.utc).isoformat(),
                             }],
                             "main_reviewer": {
@@ -887,7 +889,7 @@ def main():
     # Trigger Review
     p_trigger = subparsers.add_parser("trigger_review",
                                       help="Trigger reviews safely")
-    p_trigger.add_argument("pr_number", type=int)
+    p_trigger.add_argument("pr_number", type=int, nargs='?', default=0)
     p_trigger.add_argument(
         "--wait",
         type=int,
@@ -929,7 +931,6 @@ def main():
                 args.pr_number,
                 wait_seconds=args.wait,
                 validation_reviewer=args.validation_reviewer,
-                offline=args.offline,
             )
             print_json(result)
         elif args.command == "status":
