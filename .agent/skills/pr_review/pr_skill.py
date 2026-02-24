@@ -47,9 +47,19 @@ except ValueError:
     POLL_MAX_ATTEMPTS = 20
 
 # Default Validation Reviewer (The bot/user that must approve)
-DEFAULT_VALIDATION_REVIEWER = os.environ.get(
-    "PR_REVIEW_VALIDATION_REVIEWER", "gemini-code-assist[bot]"
+DEFAULT_VALIDATION_REVIEWER = os.environ.get("PR_REVIEW_VALIDATION_REVIEWER",
+                                             "gemini-code-assist[bot]")
+
+# Common instructional strings for next_step
+ACTION_INSTRUCTIONS = (
+    "ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. "
+    "Pull and merge latest changes from the remote branch before starting addressing code reviews, "
+    "as bots may since have pushed formatting fixes to your previous changes. "
+    "Be sure to address every comment and code review from all reviewers, ensure CI passes. "
+    "Run and fix all available tests and Linting before pushing your next changes."
 )
+
+RATE_LIMIT_INSTRUCTION = " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
 
 
 def print_json(data):
@@ -64,10 +74,11 @@ def print_error(message, code=1):
 
 
 class ReviewManager:
+
     def __init__(self):
         # Authenticate with GitHub
-        self.token = os.environ.get(
-            "GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get(
+            "GH_TOKEN")
         if not self.token:
             # Fallback to gh CLI for auth token if env var is missing
             try:
@@ -80,9 +91,9 @@ class ReviewManager:
                 )
                 self.token = res.stdout.strip()
             except (
-                subprocess.CalledProcessError,
-                FileNotFoundError,
-                subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                    subprocess.TimeoutExpired,
             ) as e:
                 print_error(
                     f"No GITHUB_TOKEN found and 'gh' command failed: {e}")
@@ -123,8 +134,8 @@ class ReviewManager:
             if os.path.basename(root) == "agent-tools":
                 self.workspace = os.path.join(root, "agent-workspace")
             else:
-                self.workspace = os.path.join(
-                    root, "agent-tools", "agent-workspace")
+                self.workspace = os.path.join(root, "agent-tools",
+                                              "agent-workspace")
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback to current directory logic
             self.workspace = os.path.join(os.getcwd(), "agent-workspace")
@@ -147,15 +158,15 @@ class ReviewManager:
 
             # Extract owner/repo using regex
             # Matches: https://github.com/owner/repo.git, git@github.com:owner/repo.git, etc.
-            match = re.search(
-                r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url)
+            match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$",
+                              url)
             if match:
                 full_name = f"{match.group(1)}/{match.group(2)}"
                 return self.g.get_repo(full_name)
         except (
-            subprocess.CalledProcessError,
-            subprocess.TimeoutExpired,
-            FileNotFoundError,
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+                FileNotFoundError,
         ):
             # Ignore local errors and fall back to gh
             self._log("Local git remote check failed, falling back to 'gh'...")
@@ -174,10 +185,10 @@ class ReviewManager:
             full_name = f"{data['owner']['login']}/{data['name']}"
             return self.g.get_repo(full_name)
         except (
-            subprocess.CalledProcessError,
-            FileNotFoundError,
-            json.JSONDecodeError,
-            ValueError,
+                subprocess.CalledProcessError,
+                FileNotFoundError,
+                json.JSONDecodeError,
+                ValueError,
         ):
             raise RuntimeError(
                 "Error checking repository context: Ensure 'gh' is installed and you are in a git repository."
@@ -338,22 +349,28 @@ class ReviewManager:
             if upstream_proc.returncode != 0:
                 return {
                     "status": "error",
-                    "message": f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.",
+                    "message":
+                    f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.",
                     "next_step": "Configure upstream and retry safe_push.",
                 }
         except subprocess.TimeoutExpired:
-            return {"status": "error", "message": "Git upstream check timed out."}
+            return {
+                "status": "error",
+                "message": "Git upstream check timed out."
+            }
         except (subprocess.CalledProcessError, FileNotFoundError):
             # This can happen if 'git rev-parse --abbrev-ref @{u}' fails for other reasons
             return {
                 "status": "error",
-                "message": f"Failed to determine upstream for branch '{branch}'. Please ensure it's configured.",
+                "message":
+                f"Failed to determine upstream for branch '{branch}'. Please ensure it's configured.",
                 "next_step": "Check git configuration and retry safe_push.",
             }
 
         # Attempt push
         try:
-            subprocess.run(["git", "push"], check=True,
+            subprocess.run(["git", "push"],
+                           check=True,
                            timeout=GIT_PUSH_TIMEOUT)
             return {
                 "status": "success",
@@ -361,16 +378,19 @@ class ReviewManager:
                 "next_step": "Run 'trigger_review' to start the review cycle.",
             }
         except (
-            subprocess.CalledProcessError,
-            subprocess.TimeoutExpired,
-            FileNotFoundError,
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+                FileNotFoundError,
         ) as e:
             # Mask token if present in error
             safe_err = self._mask_token(str(e))
             return {
-                "status": "error",
-                "message": f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection.",
-                "next_step": "Pull changes, resolve conflicts, and retry safe_push.",
+                "status":
+                "error",
+                "message":
+                f"Push failed or timed out: {safe_err}. You may need to pull changes first or check your connection.",
+                "next_step":
+                "Pull changes, resolve conflicts, and retry safe_push.",
             }
 
     def _poll_for_main_reviewer(
@@ -388,9 +408,8 @@ class ReviewManager:
         Returns the status data from check_status once main reviewer feedback is detected.
         """
         max_attempts = POLL_MAX_ATTEMPTS if max_attempts is None else max_attempts
-        poll_interval = (
-            POLL_INTERVAL_SECONDS if poll_interval is None else poll_interval
-        )
+        poll_interval = (POLL_INTERVAL_SECONDS
+                         if poll_interval is None else poll_interval)
 
         # Initialize status_data to handle edge case where max_attempts is 0 or loop is interrupted
         status_data = None
@@ -413,8 +432,7 @@ class ReviewManager:
                 # We only want to exit when the main reviewer has posted NEW feedback since trigger.
                 main_reviewer_has_new_feedback = any(
                     item.get("user") == validation_reviewer
-                    for item in status_data.get("items", [])
-                )
+                    for item in status_data.get("items", []))
 
                 if main_reviewer_has_new_feedback:
                     main_reviewer_info = status_data.get("main_reviewer", {})
@@ -513,7 +531,8 @@ class ReviewManager:
 
                 self._log("-" * 40)
                 self._log(
-                    "Polling for main reviewer feedback (enforcing Loop Rule)...")
+                    "Polling for main reviewer feedback (enforcing Loop Rule)..."
+                )
 
                 # Poll until main reviewer responds or timeout
                 status_data = self._poll_for_main_reviewer(
@@ -523,8 +542,10 @@ class ReviewManager:
                 )
             else:
                 status_data = {
-                    "status": "skipped",
-                    "message": "Initial status check skipped due to wait_seconds=0.",
+                    "status":
+                    "skipped",
+                    "message":
+                    "Initial status check skipped due to wait_seconds=0.",
                 }
 
             message = "Triggered reviews."
@@ -536,12 +557,18 @@ class ReviewManager:
                 message = "Triggered reviews; polling was skipped."
 
             return {
-                "status": "success",
-                "message": message,
-                "triggered_bots": triggered_bots,
-                "initial_status": status_data,
-                "next_step": status_data.get(
-                    "next_step", "Run 'status' to check for feedback."
+                "status":
+                "success",
+                "message":
+                message,
+                "triggered_bots":
+                triggered_bots,
+                "initial_status":
+                status_data,
+                "next_step":
+                status_data.get(
+                    "next_step",
+                    "Run 'status' to check for feedback. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue.",
                 ),
             }
 
@@ -592,23 +619,21 @@ class ReviewManager:
             # 1. Issue Comments (General)
             issue = self.repo.get_issue(pr_number)
             for comment in issue.get_comments(since=since_dt):
-                new_feedback.append(
-                    {
-                        "type": "issue_comment",
-                        "user": comment.user.login,
-                        "body": comment.body,
-                        "url": comment.html_url,
-                        "updated_at": (
-                            get_aware_utc_datetime(
-                                comment.updated_at).isoformat()
-                            if comment.updated_at
-                            else None
-                        ),
-                        "created_at": get_aware_utc_datetime(
-                            comment.created_at
-                        ).isoformat(),
-                    }
-                )
+                new_feedback.append({
+                    "type":
+                    "issue_comment",
+                    "user":
+                    comment.user.login,
+                    "body":
+                    comment.body,
+                    "url":
+                    comment.html_url,
+                    "updated_at":
+                    (get_aware_utc_datetime(comment.updated_at).isoformat()
+                     if comment.updated_at else None),
+                    "created_at":
+                    get_aware_utc_datetime(comment.created_at).isoformat(),
+                })
 
             # 2. Review Comments (Inline)
             # Fetch all review comments to ensure we catch edits (since param might only check creation time)
@@ -616,50 +641,53 @@ class ReviewManager:
                 # Use updated_at to catch edits
                 comment_dt = get_aware_utc_datetime(comment.updated_at)
                 if comment_dt and comment_dt >= since_dt:
-                    new_feedback.append(
-                        {
-                            "type": "inline_comment",
-                            "user": comment.user.login,
-                            "body": comment.body,
-                            "path": comment.path,
-                            "line": comment.line,
-                            "created_at": (
-                                get_aware_utc_datetime(
-                                    comment.created_at).isoformat()
-                                if comment.created_at
-                                else None
-                            ),
-                            "updated_at": comment_dt.isoformat(),
-                            "url": comment.html_url,
-                        }
-                    )
+                    new_feedback.append({
+                        "type":
+                        "inline_comment",
+                        "user":
+                        comment.user.login,
+                        "body":
+                        comment.body,
+                        "path":
+                        comment.path,
+                        "line":
+                        comment.line,
+                        "created_at": (get_aware_utc_datetime(
+                            comment.created_at).isoformat()
+                            if comment.created_at else None),
+                        "updated_at":
+                        comment_dt.isoformat(),
+                        "url":
+                        comment.html_url,
+                    })
 
             # 3. Reviews (Approvals/changes requested) - Filter locally
             # Materialize list for multiple iteration
             reviews = list(pr.get_reviews())
             for review in reviews:
-                if (
-                    review.submitted_at
-                ):  # Ensure submitted_at is not None before processing
+                if (review.submitted_at
+                        ):  # Ensure submitted_at is not None before processing
                     review_dt = get_aware_utc_datetime(review.submitted_at)
                     if review_dt and review_dt >= since_dt:
-                        new_feedback.append(
-                            {
-                                "type": "review_summary",
-                                "user": review.user.login,
-                                "state": review.state,
-                                "body": review.body,
-                                "created_at": review_dt.isoformat(),
-                            }
-                        )
+                        new_feedback.append({
+                            "type":
+                            "review_summary",
+                            "user":
+                            review.user.login,
+                            "state":
+                            review.state,
+                            "body":
+                            review.body,
+                            "created_at":
+                            review_dt.isoformat(),
+                        })
 
             # Determine next_step based on findings AND validation_reviewer
             next_step = "Wait for reviews."
             has_changes_requested = any(
                 item.get("state") == "CHANGES_REQUESTED"
                 for item in new_feedback
-                if item.get("type") == "review_summary"
-            )
+                if item.get("type") == "review_summary")
 
             # Check Main Reviewer Status
             # Track latest state AND most recent approval separately
@@ -675,19 +703,14 @@ class ReviewManager:
                         main_reviewer_state = review.state
                         found_latest_state = True
 
-                    if (
-                        main_reviewer_last_approval_dt is None
-                        and review.state == "APPROVED"
-                    ):
+                    if (main_reviewer_last_approval_dt is None
+                            and review.state == "APPROVED"):
                         main_reviewer_last_approval_dt = get_aware_utc_datetime(
-                            review.submitted_at
-                        )
+                            review.submitted_at)
 
                     # Exit early if both are found
-                    if (
-                        found_latest_state
-                        and main_reviewer_last_approval_dt is not None
-                    ):
+                    if (found_latest_state
+                            and main_reviewer_last_approval_dt is not None):
                         break
 
             # Check for comments from main_reviewer AFTER approval
@@ -699,11 +722,10 @@ class ReviewManager:
                     # Check for issue_comment, inline_comment, OR review comments (state=COMMENTED)
                     is_main_reviewer = item.get("user") == validation_reviewer
                     is_comment = item.get("type") in [
-                        "issue_comment", "inline_comment"]
-                    is_review_comment = (
-                        item.get("type") == "review_summary"
-                        and item.get("state") == "COMMENTED"
-                    )
+                        "issue_comment", "inline_comment"
+                    ]
+                    is_review_comment = (item.get("type") == "review_summary"
+                                         and item.get("state") == "COMMENTED")
 
                     if is_main_reviewer and (is_comment or is_review_comment):
                         # Use helper for consistent parsing
@@ -714,8 +736,7 @@ class ReviewManager:
                                 # created_at is always an ISO string from our processing
                                 # Handle Z suffix for Python < 3.11 compatibility
                                 dt_val = datetime.fromisoformat(
-                                    created_at_val.replace("Z", "+00:00")
-                                )
+                                    created_at_val.replace("Z", "+00:00"))
                                 comment_dt = get_aware_utc_datetime(dt_val)
 
                                 # Use >= to catch comments made at the exact same second
@@ -729,28 +750,25 @@ class ReviewManager:
                                 continue
 
             if has_changes_requested:
-                next_step = "CRITICAL: Changes requested by reviewer. ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP."
+                next_step = f"CRITICAL: Changes requested by reviewer. {ACTION_INSTRUCTIONS}{RATE_LIMIT_INSTRUCTION}"
             elif has_new_main_reviewer_comments:
-                next_step = f"New comments from {validation_reviewer} after approval. ANALYZE feedback -> FIX code -> SAFE_PUSH."
+                next_step = f"New comments from {validation_reviewer} after approval. {ACTION_INSTRUCTIONS}{RATE_LIMIT_INSTRUCTION}"
             elif main_reviewer_state == "APPROVED":
                 # Check if there's any OTHER feedback besides the main reviewer's approval
                 other_feedback = [
-                    item
-                    for item in new_feedback
-                    if not (
-                        item.get("user") == validation_reviewer
-                        and item.get("type") == "review_summary"
-                        and item.get("state") == "APPROVED"
-                    )
+                    item for item in new_feedback
+                    if not (item.get("user") == validation_reviewer
+                            and item.get("type") == "review_summary"
+                            and item.get("state") == "APPROVED")
                 ]
                 if other_feedback:
-                    next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+                    next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
                 else:
-                    next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User."
+                    next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
             elif new_feedback:
-                next_step = "New feedback received. ANALYZE items -> FIX issues -> SAFE_PUSH. DO NOT STOP."
+                next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
             else:
-                next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again."
+                next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
 
             output = {
                 "status": "success",
@@ -782,8 +800,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Trigger Review
-    p_trigger = subparsers.add_parser(
-        "trigger_review", help="Trigger reviews safely")
+    p_trigger = subparsers.add_parser("trigger_review",
+                                      help="Trigger reviews safely")
     p_trigger.add_argument("pr_number", type=int)
     p_trigger.add_argument(
         "--wait",
@@ -823,9 +841,9 @@ def main():
             )
             print_json(result)
         elif args.command == "status":
-            mgr.check_status(
-                args.pr_number, args.since, validation_reviewer=args.validation_reviewer
-            )
+            mgr.check_status(args.pr_number,
+                             args.since,
+                             validation_reviewer=args.validation_reviewer)
         elif args.command == "safe_push":
             result = mgr.safe_push()
             print_json(result)
@@ -841,14 +859,12 @@ def main():
 
         # Output clean JSON error
         print(
-            json.dumps(
-                {
-                    "status": "error",
-                    "message": "An internal error occurred. See stderr for details.",
-                    "error_type": type(e).__name__,
-                }
-            )
-        )
+            json.dumps({
+                "status": "error",
+                "message":
+                "An internal error occurred. See stderr for details.",
+                "error_type": type(e).__name__,
+            }))
         sys.exit(1)
 
 
