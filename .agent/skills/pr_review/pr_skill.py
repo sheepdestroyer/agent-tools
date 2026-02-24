@@ -75,11 +75,11 @@ def print_error(message, code=1):
 
 class ReviewManager:
 
-    def __init__(self):
+    def __init__(self, offline=False):
         # Authenticate with GitHub
         self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get(
             "GH_TOKEN")
-        if not self.token:
+        if not self.token and not offline:
             # Fallback to gh CLI for auth token if env var is missing
             try:
                 res = subprocess.run(
@@ -99,8 +99,9 @@ class ReviewManager:
                     f"No GITHUB_TOKEN found and 'gh' command failed: {e}")
 
         try:
-            self.g = Github(auth=Auth.Token(self.token))
-            self.repo = self._detect_repo()
+            if not offline:
+                self.g = Github(auth=Auth.Token(self.token))
+                self.repo = self._detect_repo()
             self._ensure_workspace()
         except (GithubException, OSError, ValueError) as e:
             # Mask token if present in error
@@ -494,6 +495,10 @@ class ReviewManager:
         3. Polls for main reviewer feedback.
         """
         # Step 1: Enforce Push
+        is_clean, clean_msg = self._verify_clean_git()
+        if not is_clean:
+            print_error(f"FAILED: {clean_msg}")
+
         if not offline:
             is_safe, msg = self._check_local_state()
             if not is_safe:
@@ -503,7 +508,7 @@ class ReviewManager:
 
             self._log(f"State verified: {msg}")
         else:
-            self._log("Offline mode: Skipping remote state checks.")
+            self._log("Offline mode: Local state clean. Skipping remote state checks.")
 
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
@@ -914,7 +919,8 @@ def main():
     args = parser.parse_args()
 
     try:
-        mgr = ReviewManager()
+        offline_mode = getattr(args, "offline", False)
+        mgr = ReviewManager(offline=offline_mode)
 
         if args.command == "trigger_review":
             result = mgr.trigger_review(
