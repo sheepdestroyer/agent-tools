@@ -535,7 +535,8 @@ class ReviewManager:
                     )
                     if res.stderr:
                         self._log(
-                            f"Offline Review Warnings/Errors:\n{self._mask_token(res.stderr)}")
+                            f"Offline Review Warnings/Errors:\n{self._mask_token(res.stderr)}"
+                        )
                     return {
                         "status":
                         "success",
@@ -571,8 +572,7 @@ class ReviewManager:
                     }
                 except subprocess.TimeoutExpired as e:
                     print_error(
-                        f"Offline reviewer timed out after {e.timeout}s."
-                    )
+                        f"Offline reviewer timed out after {e.timeout}s.")
                 except FileNotFoundError as e:
                     print_error(
                         f"Offline reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
