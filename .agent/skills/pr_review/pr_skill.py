@@ -889,7 +889,7 @@ def main():
     # Trigger Review
     p_trigger = subparsers.add_parser("trigger_review",
                                       help="Trigger reviews safely")
-    p_trigger.add_argument("pr_number", type=int, nargs='?', default=0)
+    p_trigger.add_argument("pr_number", type=int, nargs="?", default=0)
     p_trigger.add_argument(
         "--wait",
         type=int,
