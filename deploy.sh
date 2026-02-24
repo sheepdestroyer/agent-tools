@@ -55,8 +55,8 @@ if [ -f "$GLOBAL_GEMINI_MD" ]; then
     fi
 fi
 
-# Move temp file to actual file
-mv "$TEMP_MD" "$GLOBAL_GEMINI_MD"
+# Overwrite target file while preserving permissions and symlinks
+cat "$TEMP_MD" > "$GLOBAL_GEMINI_MD"
 
 # -----------------------------------------------------------------------------
 # 2. Deploy Skills
