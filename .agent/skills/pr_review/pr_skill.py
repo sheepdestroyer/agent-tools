@@ -508,10 +508,8 @@ class ReviewManager:
         # Step 2: Trigger Bots or Offline Reviewer
         triggered_bots = []
         try:
-            pr = self.repo.get_pull(pr_number)
-            self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
-
             if offline:
+                self._log(f"Triggering offline review for PR #{pr_number}...")
                 cmd = ["npx", "-y", "@google/gemini-cli@preview", "--allowed-tools", "run_shell_command", "-y", "--prompt", "/code-review"]
                 self._log(f"  Running offline reviewer: {' '.join(cmd)}")
                 try:
@@ -521,13 +519,19 @@ class ReviewManager:
                         self._log(f"Offline Review Warnings/Errors:\n{res.stderr}")
                     return {
                         "status": "success",
+                        "pr_number": pr_number,
                         "message": "Offline review completed locally.",
                         "triggered_bots": ["gemini-cli-review"],
-                        "next_step": "Analyze the offline review feedback printed to stderr and implement fixes. Skip Step 2 (status check) and proceed directly to Step 4."
+                        "feedback": res.stdout,
+                        "next_step": "Analyze the 'feedback' field in this response and implement fixes. Proceed directly to Step 4 (Analyze & Implement)."
                     }
+                except FileNotFoundError as e:
+                    print_error(f"Offline reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}")
                 except subprocess.CalledProcessError as e:
                     print_error(f"Offline reviewer failed:\nSTDERR: {e.stderr}\nSTDOUT: {e.stdout}")
             else:
+                pr = self.repo.get_pull(pr_number)
+                self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
                 for cmd in REVIEW_COMMANDS:
                     pr.create_issue_comment(cmd)
                     self._log(f"  Posted: {cmd}")
