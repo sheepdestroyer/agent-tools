@@ -102,6 +102,8 @@ class ReviewManager:
             if not offline:
                 self.g = Github(auth=Auth.Token(self.token))
                 self.repo = self._detect_repo()
+            else:
+                self.repo = None
             self._ensure_workspace()
         except (GithubException, OSError, ValueError) as e:
             # Mask token if present in error
@@ -493,7 +495,7 @@ class ReviewManager:
         2. Post comments to trigger bots or run offline reviewer.
         3. Polls for main reviewer feedback.
         """
-        offline = not hasattr(self, "repo")
+        offline = getattr(self, "repo", None) is None
         # Step 1: Enforce Push
         is_clean, clean_msg = self._verify_clean_git()
         if not is_clean:
@@ -927,6 +929,8 @@ def main():
         mgr = ReviewManager(offline=offline_mode)
 
         if args.command == "trigger_review":
+            if not offline_mode and args.pr_number is None:
+                parser.error("pr_number is required unless --offline is specified")
             result = mgr.trigger_review(
                 args.pr_number,
                 wait_seconds=args.wait,
