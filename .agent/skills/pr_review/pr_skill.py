@@ -486,10 +486,11 @@ class ReviewManager:
         pr_number,
         wait_seconds=180,
         validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
+        offline=False,
     ):
         """
         1. Checks local state (Hard Constraint).
-        2. Post comments to trigger bots.
+        2. Post comments to trigger bots or run offline reviewer.
         3. Polls for main reviewer feedback.
         """
         # Step 1: Enforce Push
@@ -504,16 +505,33 @@ class ReviewManager:
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
 
-        # Step 2: Trigger Bots
+        # Step 2: Trigger Bots or Offline Reviewer
         triggered_bots = []
         try:
             pr = self.repo.get_pull(pr_number)
             self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
 
-            for cmd in REVIEW_COMMANDS:
-                pr.create_issue_comment(cmd)
-                self._log(f"  Posted: {cmd}")
-                triggered_bots.append(cmd)
+            if offline:
+                cmd = ["npx", "-y", "@google/gemini-cli@preview", "--allowed-tools", "run_shell_command", "-y", "--prompt", "/code-review"]
+                self._log(f"  Running offline reviewer: {' '.join(cmd)}")
+                try:
+                    res = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                    self._log(f"Offline Review Feedback:\n{res.stdout}")
+                    if res.stderr:
+                        self._log(f"Offline Review Warnings/Errors:\n{res.stderr}")
+                    return {
+                        "status": "success",
+                        "message": "Offline review completed locally.",
+                        "triggered_bots": ["gemini-cli-review"],
+                        "next_step": "Analyze the offline review feedback printed to stderr and implement fixes. Skip Step 2 (status check) and proceed directly to Step 4."
+                    }
+                except subprocess.CalledProcessError as e:
+                    print_error(f"Offline reviewer failed:\nSTDERR: {e.stderr}\nSTDOUT: {e.stdout}")
+            else:
+                for cmd in REVIEW_COMMANDS:
+                    pr.create_issue_comment(cmd)
+                    self._log(f"  Posted: {cmd}")
+                    triggered_bots.append(cmd)
 
             self._log("All review bots triggered successfully.")
 
@@ -814,6 +832,11 @@ def main():
         default=DEFAULT_VALIDATION_REVIEWER,
         help="Username of the main reviewer that must approve",
     )
+    p_trigger.add_argument(
+        "--offline",
+        action="store_true",
+        help="Run in offline mode using only gemini-cli-review locally",
+    )
 
     # Status
     p_status = subparsers.add_parser("status", help="Check review status")
@@ -838,6 +861,7 @@ def main():
                 args.pr_number,
                 wait_seconds=args.wait,
                 validation_reviewer=args.validation_reviewer,
+                offline=args.offline,
             )
             print_json(result)
         elif args.command == "status":
