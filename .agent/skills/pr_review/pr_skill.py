@@ -526,7 +526,7 @@ class ReviewManager:
                                          check=True,
                                          capture_output=True,
                                          text=True,
-                                         timeout=300)
+                                         timeout=600)
                     clean_stdout = re.sub(
                         r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "",
                         res.stdout)
@@ -535,7 +535,7 @@ class ReviewManager:
                     )
                     if res.stderr:
                         self._log(
-                            f"Offline Review Warnings/Errors:\n{res.stderr}")
+                            f"Offline Review Warnings/Errors:\n{self._mask_token(res.stderr)}")
                     return {
                         "status":
                         "success",
@@ -569,6 +569,10 @@ class ReviewManager:
                         "next_step":
                         "Analyze the feedback in 'initial_status.items' and implement fixes. Proceed directly to Step 4 (Analyze & Implement).",
                     }
+                except subprocess.TimeoutExpired as e:
+                    print_error(
+                        f"Offline reviewer timed out after {e.timeout}s."
+                    )
                 except FileNotFoundError as e:
                     print_error(
                         f"Offline reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
