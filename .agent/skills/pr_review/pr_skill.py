@@ -75,12 +75,12 @@ def print_error(message, code=1):
 
 class ReviewManager:
 
-    def __init__(self, offline=False):
-        self.offline = offline
+    def __init__(self, local=False):
+        self.local = local
         # Authenticate with GitHub
         self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get(
             "GH_TOKEN")
-        if not self.token and not offline:
+        if not self.token:
             # Fallback to gh CLI for auth token if env var is missing
             try:
                 res = subprocess.run(
@@ -100,11 +100,8 @@ class ReviewManager:
                     f"No GITHUB_TOKEN found and 'gh' command failed: {e}")
 
         try:
-            if not offline:
-                self.g = Github(auth=Auth.Token(self.token))
-                self.repo = self._detect_repo()
-            else:
-                self.repo = None
+            self.g = Github(auth=Auth.Token(self.token))
+            self.repo = self._detect_repo()
             self._ensure_workspace()
         except (GithubException, OSError, ValueError) as e:
             # Mask token if present in error
@@ -494,42 +491,33 @@ class ReviewManager:
     ):
         """
         1. Checks local state (Hard Constraint).
-        2. Post comments to trigger bots or run offline reviewer.
+        2. Post comments to trigger bots or run local reviewer.
         3. Polls for main reviewer feedback.
         """
-        offline = self.offline
+        local = self.local
         # Step 1: Enforce Push
-        is_clean, clean_msg = self._verify_clean_git()
-        if not is_clean:
-            print_error(f"FAILED: {clean_msg}")
-
-        if not offline:
-            is_safe, msg = self._check_local_state()
-            if not is_safe:
-                print_error(
-                    f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually."
-                )
-
-            self._log(f"State verified: {msg}")
-        else:
-            self._log(
-                "Offline mode: Local state clean. Skipping remote state checks."
+        is_safe, msg = self._check_local_state()
+        if not is_safe:
+            print_error(
+                f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually."
             )
+
+        self._log(f"State verified: {msg}")
 
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
 
-        # Step 2: Trigger Bots or Offline Reviewer
+        # Step 2: Trigger Bots or Local Reviewer
         triggered_bots = []
         try:
-            if offline:
+            if local:
                 pr_label = f" PR #{pr_number}" if pr_number else " local changes"
-                self._log(f"Triggering offline review for{pr_label}...")
+                self._log(f"Triggering local review for{pr_label}...")
                 settings_path = os.path.join(os.path.dirname(__file__),
                                              "settings.json")
                 settings = {
                     "gemini_cli_channel": "preview",
-                    "offline_model": "gemini-3.1-pro-preview",
+                    "local_model": "gemini-3.1-pro-preview",
                 }
                 try:
                     if os.path.exists(settings_path):
@@ -548,11 +536,11 @@ class ReviewManager:
                     "--approval-mode",
                     "yolo",
                     "--model",
-                    settings.get("offline_model", model),
+                    settings.get("local_model", model),
                     "--prompt",
                     "/code-review",
                 ]
-                self._log(f"  Running offline reviewer: {cmd}")
+                self._log(f"  Running local reviewer: {cmd}")
                 try:
                     res = subprocess.run(cmd,
                                          check=True,
@@ -563,17 +551,17 @@ class ReviewManager:
                         r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "",
                         res.stdout)
                     self._log(
-                        f"Offline Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}"
+                        f"Local Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}"
                     )
                     if res.stderr:
                         self._log(
-                            f"Offline Review Warnings/Errors:\n{self._mask_token(res.stderr)}"
+                            f"Local Review Warnings/Errors:\n{self._mask_token(res.stderr)}"
                         )
                     return {
                         "status":
                         "success",
                         "message":
-                        "Offline review completed locally.",
+                        "Local review completed locally.",
                         "triggered_bots": ["/code-review"],
                         "initial_status": {
                             "status":
@@ -586,7 +574,7 @@ class ReviewManager:
                             1,
                             "items": [{
                                 "type":
-                                "offline_review",
+                                "local_review",
                                 "user":
                                 "gemini-cli-review",
                                 "body":
@@ -606,14 +594,14 @@ class ReviewManager:
                     }
                 except subprocess.TimeoutExpired as e:
                     print_error(
-                        f"Offline reviewer timed out after {e.timeout}s.")
+                        f"Local reviewer timed out after {e.timeout}s.")
                 except FileNotFoundError as e:
                     print_error(
-                        f"Offline reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
+                        f"Local reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
                     )
                 except subprocess.CalledProcessError as e:
                     print_error(
-                        f"Offline reviewer failed:\nSTDERR: {self._mask_token(e.stderr)}\nSTDOUT: {self._mask_token(e.stdout)}"
+                        f"Local reviewer failed:\nSTDERR: {self._mask_token(e.stderr)}\nSTDOUT: {self._mask_token(e.stdout)}"
                     )
             else:
                 pr = self.repo.get_pull(pr_number)
@@ -937,9 +925,9 @@ def main():
         help="Username of the main reviewer that must approve",
     )
     p_trigger.add_argument(
-        "--offline",
+        "--local",
         action="store_true",
-        help="Run in offline mode using only gemini-cli-review locally",
+        help="Run in local mode using only gemini-cli-review locally",
     )
 
     # Status
@@ -958,14 +946,14 @@ def main():
     args = parser.parse_args()
 
     try:
-        offline_mode = getattr(args, "offline", False)
-        mgr = ReviewManager(offline=offline_mode)
+        local_mode = getattr(args, "local", False)
+        mgr = ReviewManager(local=local_mode)
 
         if args.command == "trigger_review":
-            if not offline_mode and (args.pr_number is None
+            if not local_mode and (args.pr_number is None
                                      or args.pr_number <= 0):
                 parser.error(
-                    "pr_number is required unless --offline is specified")
+                    "pr_number is required unless --local is specified")
             result = mgr.trigger_review(
                 args.pr_number,
                 wait_seconds=args.wait,
