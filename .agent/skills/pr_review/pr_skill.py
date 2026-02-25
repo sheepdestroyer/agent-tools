@@ -1037,7 +1037,7 @@ def main():
             print_json(result)
             if result["status"] != "success":
                 sys.exit(1)
-    except Exception as e:  # skipcq: PYL-W0703, PYL-W0718
+    except Exception as e:  # skipcq: PYL-W0703, PYL-W0718, PTC-W0045
         # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
         # Log full traceback to stderr for debugging
         sys.stderr.write(f"CRITICAL ERROR: {str(e)}\n")
