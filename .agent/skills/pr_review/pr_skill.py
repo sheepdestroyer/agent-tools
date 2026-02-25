@@ -824,7 +824,7 @@ class ReviewManager:
                         comment.line,
                         "created_at": (get_aware_utc_datetime(
                             comment.created_at).isoformat()
-                            if comment.created_at else None),
+                                       if comment.created_at else None),
                         "updated_at":
                         comment_dt.isoformat(),
                         "url":
@@ -986,12 +986,14 @@ def main():
     p_trigger.add_argument(
         "--local",
         action="store_true",
-        help="Run in local mode (runs gemini-cli-review, waits 120s for GitHub comments)",
+        help=
+        "Run in local mode (runs gemini-cli-review, waits 120s for GitHub comments)",
     )
     p_trigger.add_argument(
         "--offline",
         action="store_true",
-        help="Run completely offline without pushing to GitHub. Only runs gemini-cli-review locally.",
+        help=
+        "Run completely offline without pushing to GitHub. Only runs gemini-cli-review locally.",
     )
 
     # Status
