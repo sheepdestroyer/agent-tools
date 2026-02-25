@@ -76,6 +76,7 @@ def print_error(message, code=1):
 class ReviewManager:
 
     def __init__(self, offline=False):
+        self.offline = offline
         # Authenticate with GitHub
         self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get(
             "GH_TOKEN")
@@ -489,13 +490,14 @@ class ReviewManager:
         pr_number,
         wait_seconds=180,
         validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
+        model="gemini-3.1-pro-preview",
     ):
         """
         1. Checks local state (Hard Constraint).
         2. Post comments to trigger bots or run offline reviewer.
         3. Polls for main reviewer feedback.
         """
-        offline = getattr(self, "repo", None) is None
+        offline = self.offline
         # Step 1: Enforce Push
         is_clean, clean_msg = self._verify_clean_git()
         if not is_clean:
@@ -522,13 +524,26 @@ class ReviewManager:
         try:
             if offline:
                 self._log(f"Triggering offline review for PR #{pr_number}...")
+                settings_path = os.path.join(os.path.dirname(__file__), "settings.json")
+                settings = {"gemini_cli_channel": "preview", "offline_model": "gemini-3.1-pro-preview"}
+                try:
+                    if os.path.exists(settings_path):
+                        with open(settings_path, "r") as f:
+                            settings.update(json.load(f))
+                except Exception as e:
+                    self._log(f"Warning: Failed to load {settings_path}: {e}")
+
+                channel = settings.get("gemini_cli_channel", "preview")
+                pkg = f"@google/gemini-cli@{channel}"
+                
                 cmd = [
                     "npx",
                     "-y",
-                    "@google/gemini-cli@preview",
-                    "--allowed-tools",
-                    "run_shell_command",
-                    "-y",
+                    pkg,
+                    "--approval-mode",
+                    "yolo",
+                    "--model",
+                    settings.get("offline_model", "gemini-3.1-pro-preview"),
                     "--prompt",
                     "/code-review",
                 ]
@@ -685,6 +700,17 @@ class ReviewManager:
             return dt_obj.astimezone(timezone.utc)
 
         try:
+            if getattr(self, "repo", None) is None:
+                output = {
+                    "status": "error",
+                    "message": "Status check is not supported in offline mode as it requires GitHub API access."
+                }
+                if return_data:
+                    return output
+                else:
+                    print_json(output)
+                    return output
+
             pr = self.repo.get_pull(pr_number)
 
             since_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -891,7 +917,7 @@ def main():
     # Trigger Review
     p_trigger = subparsers.add_parser("trigger_review",
                                       help="Trigger reviews safely")
-    p_trigger.add_argument("pr_number", type=int, nargs="?", default=0)
+    p_trigger.add_argument("pr_number", type=int, nargs="?", default=None)
     p_trigger.add_argument(
         "--wait",
         type=int,
@@ -929,7 +955,7 @@ def main():
         mgr = ReviewManager(offline=offline_mode)
 
         if args.command == "trigger_review":
-            if not offline_mode and args.pr_number is None:
+            if not offline_mode and (args.pr_number is None or args.pr_number <= 0):
                 parser.error("pr_number is required unless --offline is specified")
             result = mgr.trigger_review(
                 args.pr_number,
