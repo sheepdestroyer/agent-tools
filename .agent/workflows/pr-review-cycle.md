@@ -18,10 +18,11 @@ Start with a standard "offline" loop. Work completely offline without pushing to
 ### Phase 2: Online Review Loop (Normal Mode)
 Once the offline loop completes or reaches 5 iterations, switch to the normal online mode.
 1. **Push Changes**: `git push` your changes to the remote branch. **MANDATORY**: *All test suites must pass before pushing changes.*
-2. **Check Status**: `python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}`
+2. **Check Status & CI**: `python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}`
+   *(At the same time, fetch and address any non-passing CI checks, e.g., using `gh pr checks`).*
 3. **Trigger Reviews**: `python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}`
-   *(This triggers GitHub bots and polls for feedback).*
-4. **Analyze & Implement**: Address the feedback from GitHub bots.
+   *(This triggers GitHub bots and polls for feedback. You must also fetch and address any non-passing CI checks here).*
+4. **Analyze & Implement**: Address the feedback from GitHub bots and fix any failing CI checks.
 5. **Loop**: Return to Step 1 (Push Changes) until "Ready to Merge".
 
 ### Phase 3: Local Mode Fallback (If Rate Limited)
@@ -31,8 +32,8 @@ If the main reviewer (e.g., `gemini-code-assist[bot]`) states that it is current
    ```bash
    python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER} --local
    ```
-   *In Local Mode, the script replaces the main reviewer with `gemini-cli-review` locally. It avoids triggering remote bots, but still waits (120 seconds) and fetches any independent human/bot comments from GitHub.*
-3. **Analyze & Implement**: Address the combined local and GitHub feedback.
+   *In Local Mode, the script replaces the main reviewer with `gemini-cli-review` locally. It avoids triggering remote bots, but still waits (120 seconds) and fetches any independent human/bot comments from GitHub. At the same time, you must fetch and address any non-passing CI checks (e.g., using `gh pr checks`).*
+3. **Analyze & Implement**: Address the combined local feedback, GitHub feedback, and fix any failing CI checks.
 4. **Loop**: Return to Step 1 until "Ready to Merge".
 
 ## Compliance
