@@ -6,12 +6,13 @@
 
 ## 1. The Loop Rule
 A Review Cycle is a **LOOP**, not a check.
-*   **Definition**: A cycle is `Push -> Check Status -> Analyze -> Fix -> REPEAT`. Only trigger new reviews after a push, not repeatedly.
-*   **Exit Condition**: You may ONLY exit the loop when the reviewer explicitly states "Ready to Merge", "No issues found", or if the very latest gemini-code-assist bot comment states it is currently rate limited (ignoring previous, expired warnings).
+*   **Definition**: A cycle is `Push -> Check Status -> Analyze -> Fix -> REPEAT`. Only trigger new reviews after a push, not repeatedly. *(Exception: The Phase 1 Offline Mode loop does not push).*
+*   **Exit Condition**: You may ONLY exit the loop when the reviewer explicitly states "Ready to Merge", "No issues found", or if the very latest gemini-code-assist bot comment states it is currently rate limited (ignoring previous, expired warnings). *If rate limited, switch to Local Mode.*
 *   **Prohibition**: Never stop after fixing issues without re-verifying with the bot. Never trigger new reviews without first checking existing feedback using `pr_skill.py status`.
 
 ## 2. Push Before Trigger
-**STRICT RULE**: You MUST `git push` your changes BEFORE triggering a review.
+**STRICT RULE**: You MUST `git push` your changes BEFORE triggering an online or local review.
+*   *Note: This rule is bypassed during the Phase 1 Offline Pre-Review loop where changes are reviewed completely locally before pushing.*
 *   **Mandatory Testing**: All test suites must pass before pushing changes.
 *   Triggering a review on unpushed code results in outdated feedback and wastes API rate limits.
 *   Always verify `git status` is clean and `git log` shows your commit before running `gh pr comment`.
