@@ -56,7 +56,7 @@ ACTION_INSTRUCTIONS = (
     "ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. "
     "Pull and merge latest changes from the remote branch before starting addressing code reviews, "
     "as bots may since have pushed formatting fixes to your previous changes. "
-    "Be sure to address every comment and code review from all reviewers, ensure CI passes. "
+    "Be sure to fetch, check, and address every comment and code review from all reviewers, AND ensure that you fetch and address any non-passing CI checks (e.g., using `gh pr checks`). "
     "Run and fix all available tests and Linting before pushing your next changes."
 )
 
