@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 
 from github import Auth, Github, GithubException
@@ -272,6 +273,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
+                check=False,
             )
             if upstream_proc.returncode != 0:
                 return (
@@ -287,6 +289,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
+                check=False,
             )
             if rev_list.returncode == 0:
                 try:
@@ -338,14 +341,13 @@ class ReviewManager:
         branch = branch_or_msg
 
         # Separately check upstream
-
-        # Separately check upstream
         try:
             upstream_proc = subprocess.run(
                 ["git", "rev-parse", "--abbrev-ref", "@{u}"],
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
+                check=False,
             )
             if upstream_proc.returncode != 0:
                 return {
@@ -521,9 +523,9 @@ class ReviewManager:
                 }
                 try:
                     if os.path.exists(settings_path):
-                        with open(settings_path, "r") as f:
+                        with open(settings_path, "r", encoding="utf-8") as f:
                             settings.update(json.load(f))
-                except Exception as e:
+                except (OSError, json.JSONDecodeError) as e:
                     self._log(f"Warning: Failed to load {settings_path}: {e}")
 
                 channel = settings.get("gemini_cli_channel", "preview")
@@ -701,10 +703,9 @@ class ReviewManager:
                         "message":
                         "Status check is not supported in local mode as it requires GitHub API access.",
                     }
-                else:
-                    print_error(
-                        "Status check is not supported in local mode as it requires GitHub API access."
-                    )
+                print_error(
+                    "Status check is not supported in local mode as it requires GitHub API access."
+                )
 
             pr = self.repo.get_pull(pr_number)
 
@@ -895,9 +896,8 @@ class ReviewManager:
 
             if return_data:
                 return output
-            else:
-                print_json(output)
-                return output
+            print_json(output)
+            return output
 
         except GithubException as e:
             if return_data:
@@ -973,7 +973,6 @@ def main():
         # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
         # Log full traceback to stderr for debugging
         sys.stderr.write(f"CRITICAL ERROR: {str(e)}\n")
-        import traceback
 
         traceback.print_exc(file=sys.stderr)
 
