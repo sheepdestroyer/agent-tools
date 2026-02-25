@@ -951,7 +951,7 @@ def main():
 
         if args.command == "trigger_review":
             if not local_mode and (args.pr_number is None
-                                     or args.pr_number <= 0):
+                                   or args.pr_number <= 0):
                 parser.error(
                     "pr_number is required unless --local is specified")
             result = mgr.trigger_review(
