@@ -44,8 +44,9 @@ python3 .agent/skills/pr_review/pr_skill.py safe_push
 
 Triggers new reviews from all configured bots (Gemini, CodeRabbit, Sourcery, etc.) on a specific PR.
 *   **Parameters**:
-  *   `pr_number` (integer)
+  *   `pr_number` (integer, optional if `--local` is used)
   *   `--wait` (integer, optional): Seconds to wait for initial feedback (default: 180).
+  *   `--local` (flag, optional): Runs a local review using `gemini-cli-review` instead of triggering remote bots. *Note: Local Mode still requires a GitHub remote, valid authentication, and a pushed/synced local branch. It solely bypasses posting comments to GitHub.*
 *   **Constraints**: Validates local state (clean & pushed) before triggering. If checks fail, it returns error JSON.
 *   **Polling Behavior**: After the initial wait, the tool **polls until the main reviewer responds** (up to ~10 minutes). This enforces the Loop Rule - preventing premature exit before feedback is received.
 *   **Output**: JSON object with `status`, `message`, `triggered_bots`, `initial_status`, and `next_step`.

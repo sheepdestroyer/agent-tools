@@ -21,7 +21,7 @@ description: Official workflow for managing PR Review Cycles with AI bots (Gemin
     ```bash
     python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}
     ```
-    *   **Local Mode:** If running in local mode, use the `--local` flag to only run the local `gemini-cli-review` bot without posting to GitHub. Skip the 3-minute wait and proceed directly to Step 4.
+    *   **Local Mode:** If running in local mode, use the `--local` flag to only run the local `gemini-cli-review` bot without posting to GitHub. *Note: Local Mode still strictly requires a GitHub remote, valid authentication, and that your local branch is fully pushed and synced. It simply bypasses triggering remote reviewer bots.* Skip the 3-minute wait and proceed directly to Step 4.
     ```bash
     python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER} --local
     ```
