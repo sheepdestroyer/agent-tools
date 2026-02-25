@@ -172,7 +172,6 @@ class ReviewManager:
         ):
             # Ignore local errors and fall back to gh
             self._log("Local git remote check failed, falling back to 'gh'...")
-            pass
 
         # 2. Fallback to gh CLI (slower, network dependent)
         try:
@@ -673,6 +672,7 @@ class ReviewManager:
 
         except GithubException as e:
             print_error(f"GitHub API Error: {self._mask_token(str(e))}")
+        return None
 
     def check_status(
         self,
@@ -969,7 +969,7 @@ def main():
             print_json(result)
             if result["status"] != "success":
                 sys.exit(1)
-    except Exception as e:
+    except Exception as e:  # skipcq: PYL-W0703, PYL-W0718
         # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
         # Log full traceback to stderr for debugging
         sys.stderr.write(f"CRITICAL ERROR: {str(e)}\n")
