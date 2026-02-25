@@ -57,7 +57,7 @@ ACTION_INSTRUCTIONS = (
     "Pull and merge latest changes from the remote branch before starting addressing code reviews, "
     "as bots may since have pushed formatting fixes to your previous changes. "
     "Be sure to fetch, check, and address every comment and code review from all reviewers, AND ensure that you fetch and address any non-passing CI checks (e.g., using `gh pr checks`). "
-    "Run and fix all available tests and Linting before pushing your next changes."
+    "Run and fix all available tests and Linting. Then, JUST BEFORE pushing your next changes, run a max of 2 iterations of offline review (`--offline`) to catch any remaining issues locally."
 )
 
 RATE_LIMIT_INSTRUCTION = " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
