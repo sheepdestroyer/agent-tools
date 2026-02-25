@@ -523,7 +523,8 @@ class ReviewManager:
         triggered_bots = []
         try:
             if offline:
-                self._log(f"Triggering offline review for PR #{pr_number}...")
+                pr_label = f" PR #{pr_number}" if pr_number else " local changes"
+                self._log(f"Triggering offline review for{pr_label}...")
                 settings_path = os.path.join(os.path.dirname(__file__), "settings.json")
                 settings = {"gemini_cli_channel": "preview", "offline_model": "gemini-3.1-pro-preview"}
                 try:
@@ -543,7 +544,7 @@ class ReviewManager:
                     "--approval-mode",
                     "yolo",
                     "--model",
-                    settings.get("offline_model", "gemini-3.1-pro-preview"),
+                    settings.get("offline_model", model),
                     "--prompt",
                     "/code-review",
                 ]
@@ -701,15 +702,13 @@ class ReviewManager:
 
         try:
             if getattr(self, "repo", None) is None:
-                output = {
-                    "status": "error",
-                    "message": "Status check is not supported in offline mode as it requires GitHub API access."
-                }
                 if return_data:
-                    return output
+                    return {
+                        "status": "error",
+                        "message": "Status check is not supported in offline mode as it requires GitHub API access."
+                    }
                 else:
-                    print_json(output)
-                    return output
+                    print_error("Status check is not supported in offline mode as it requires GitHub API access.")
 
             pr = self.repo.get_pull(pr_number)
 
