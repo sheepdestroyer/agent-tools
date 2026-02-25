@@ -517,7 +517,7 @@ class ReviewManager:
                                              "settings.json")
                 settings = {
                     "gemini_cli_channel": "preview",
-                    "local_model": "gemini-3.1-pro-preview",
+                    "local_model": model,
                 }
                 try:
                     if os.path.exists(settings_path):
