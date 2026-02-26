@@ -76,8 +76,10 @@ def print_error(message, code=1):
 
 
 class ReviewManager:
+    """Manager for handling pull request reviews via online or local/offline methods."""
 
     def __init__(self, local=False, offline=False):
+        """Initialize the ReviewManager with given mode flags."""
         self.local = local
         self.offline = offline
         # Authenticate with GitHub
@@ -686,6 +688,7 @@ class ReviewManager:
 
     def _run_local_reviewer(self, pr_number, model, local,
                             offline):  # skipcq: PYL-R1710, PYL-W0613
+        """Run the local offline review process using gemini-cli."""
         # skipcq: PYL-R1710
         pr_label = f" PR #{pr_number}" if pr_number else " local changes"
         self._log(
@@ -756,6 +759,7 @@ class ReviewManager:
 
     def _trigger_online_review(self, pr_number,
                                triggered_bots):  # skipcq: PYL-R1710
+        """Trigger an online review by posting bot commands to a specific PR."""
         try:
             pr = self.repo.get_pull(pr_number)
             self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
@@ -790,7 +794,7 @@ class ReviewManager:
             return dt_obj.astimezone(timezone.utc)
 
         try:
-            if getattr(self, "repo", None) is None:
+            if self.offline:
                 if return_data:
                     return {
                         "status":
@@ -1001,6 +1005,7 @@ class ReviewManager:
 
 
 def main():
+    """Main entry point for the PR Skill Agent Tool CLI."""
     parser = argparse.ArgumentParser(description="PR Skill Agent Tool")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
