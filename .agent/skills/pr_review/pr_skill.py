@@ -131,7 +131,7 @@ class ReviewManager:
         timestamp = datetime.now(timezone.utc).isoformat()
         log_line = f"[{timestamp}] [AUDIT] {message}"
 
-        if hasattr(self, 'log_file_path'):
+        if hasattr(self, "log_file_path"):
             try:
                 with open(self.log_file_path, "a", encoding="utf-8") as f:
                     f.write(log_line + "\n")
@@ -140,7 +140,7 @@ class ReviewManager:
 
         if not self.verbose:
             return
-            
+
         print(log_line, file=sys.stderr)
 
     def _sleep_with_keepalive(self, seconds):
@@ -152,7 +152,7 @@ class ReviewManager:
             time.sleep(sleep_time)
             elapsed += sleep_time
             now = time.time()
-            if now - getattr(self, 'last_keepalive', now) >= 120:
+            if now - getattr(self, "last_keepalive", now) >= 120:
                 print("... [waiting]", file=sys.stderr, flush=True)
                 self._log("Keepalive emitted during wait.")
                 self.last_keepalive = now
@@ -1035,7 +1035,9 @@ class ReviewManager:
 def main():
     """Main entry point for the PR Skill Agent Tool CLI."""
     parser = argparse.ArgumentParser(description="PR Skill Agent Tool")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose audit logging")
+    parser.add_argument("--verbose",
+                        action="store_true",
+                        help="Enable verbose audit logging")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Trigger Review
@@ -1084,7 +1086,11 @@ def main():
         offline_mode = getattr(args, "offline", False)
         if local_mode and offline_mode:
             parser.error("Cannot specify both --local and --offline")
-        mgr = ReviewManager(local=local_mode, offline=offline_mode, verbose=getattr(args, "verbose", False))
+        mgr = ReviewManager(
+            local=local_mode,
+            offline=offline_mode,
+            verbose=getattr(args, "verbose", False),
+        )
 
         if args.command == "trigger_review":
             if not offline_mode and (args.pr_number is None
