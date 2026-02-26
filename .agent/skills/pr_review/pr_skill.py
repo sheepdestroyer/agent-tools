@@ -377,17 +377,23 @@ class ReviewManager:
         # Attempt push using fetch, rebase, and push pattern to avoid conflicts
         try:
             # 1. Fetch
-            subprocess.run(["git", "fetch", "origin", branch],
-                           check=True,
-                           timeout=GIT_SHORT_TIMEOUT)
+            subprocess.run(
+                ["git", "fetch", "origin", branch],
+                check=True,
+                timeout=GIT_SHORT_TIMEOUT,
+            )
             # 2. Rebase
-            subprocess.run(["git", "rebase", f"origin/{branch}"],
-                           check=True,
-                           timeout=GIT_SHORT_TIMEOUT)
+            subprocess.run(
+                ["git", "rebase", f"origin/{branch}"],
+                check=True,
+                timeout=GIT_SHORT_TIMEOUT,
+            )
             # 3. Push
-            subprocess.run(["git", "push", "--force-with-lease", "origin", branch],
-                           check=True,
-                           timeout=GIT_PUSH_TIMEOUT)
+            subprocess.run(
+                ["git", "push", "--force-with-lease", "origin", branch],
+                check=True,
+                timeout=GIT_PUSH_TIMEOUT,
+            )
             return {
                 "status": "success",
                 "message": "Push successful.",
