@@ -715,7 +715,7 @@ class ReviewManager:
             }
 
     def _run_local_reviewer(self, pr_number, model, local,
-                            offline):  # skipcq: PYL-R1710, PYL-W0613
+                            offline):  # skipcq: PYL-R1710
         """Run the local offline review process using gemini-cli."""
         # skipcq: PYL-R1710
         pr_label = f" PR #{pr_number}" if pr_number else " local changes"
@@ -786,7 +786,7 @@ class ReviewManager:
             return None
 
     def _trigger_online_review(self, pr_number,
-                               triggered_bots):  # skipcq: PYL-R1710
+                               triggered_bots):
         """Trigger an online review by posting bot commands to a specific PR."""
         try:
             pr = self.repo.get_pull(pr_number)
@@ -1112,7 +1112,7 @@ def main():
             print_json(result)
             if result["status"] != "success":
                 sys.exit(1)
-    except Exception as e:  # skipcq: PYL-W0703, PYL-W0718, PTC-W0045, BAN-B607
+    except Exception as e:  # skipcq: PYL-W0703, PYL-W0718, PTC-W0045
         # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
         # Log full traceback to stderr for debugging
         error_msg = str(e)
