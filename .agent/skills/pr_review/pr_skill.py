@@ -577,7 +577,7 @@ class ReviewManager:
                     validation_reviewer=validation_reviewer,
                 )
             except GithubException as e:
-                self._log(f"GitHub polling failed: {e}")
+                self._log(f"GitHub polling failed: {self._mask_token(str(e))}")
                 status_data = {
                     "status": "success",
                     "items": [],
