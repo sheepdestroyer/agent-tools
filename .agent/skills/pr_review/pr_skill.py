@@ -1017,8 +1017,10 @@ def main():
         mgr = ReviewManager(local=local_mode, offline=offline_mode)
 
         if args.command == "trigger_review":
-            if not offline_mode and (args.pr_number is None or args.pr_number <= 0):
-                parser.error("pr_number is required unless --offline is specified")
+            if not offline_mode and (args.pr_number is None
+                                     or args.pr_number <= 0):
+                parser.error(
+                    "pr_number is required unless --offline is specified")
             result = mgr.trigger_review(
                 args.pr_number,
                 wait_seconds=args.wait,
@@ -1038,12 +1040,12 @@ def main():
         # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
         # Log full traceback to stderr for debugging
         error_msg = str(e)
-        if 'mgr' in locals() and hasattr(mgr, '_mask_token'):
+        if "mgr" in locals() and hasattr(mgr, "_mask_token"):
             error_msg = mgr._mask_token(error_msg)
         sys.stderr.write(f"CRITICAL ERROR: {error_msg}\n")
 
         tb = traceback.format_exc()
-        if 'mgr' in locals() and hasattr(mgr, '_mask_token'):
+        if "mgr" in locals() and hasattr(mgr, "_mask_token"):
             tb = mgr._mask_token(tb)
         sys.stderr.write(tb)
 
