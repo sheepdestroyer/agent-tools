@@ -512,7 +512,7 @@ class ReviewManager:
             self._log(f"State verified: {msg}")
         else:
             self._log(
-                "Offline mode: Local state clean. Skipping remote state checks."
+                "Offline mode: Skipping remote state checks."
             )
 
         # Capture start time for status check
@@ -585,7 +585,13 @@ class ReviewManager:
                 }
 
             if local_review_item:
-                status_data["items"].insert(0, local_review_item)
+                if status_data.get("status") == "error":
+                    status_data = {
+                        "status": "success",
+                        "items": [],
+                        "next_step": "Analyze feedback and implement fixes.",
+                    }
+                status_data.setdefault("items", []).insert(0, local_review_item)
                 status_data["new_item_count"] = len(status_data["items"])
                 status_data["main_reviewer"] = {
                     "user": "gemini-cli-review",
