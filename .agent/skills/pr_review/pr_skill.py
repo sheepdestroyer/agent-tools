@@ -551,7 +551,8 @@ class ReviewManager:
                 "yolo",
                 "--model",
                 str(settings.get("local_model") or model),
-                "--prompt",                "/code-review",
+                "--prompt",
+                "/code-review",
             ]
             self._log(
                 f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
@@ -567,7 +568,9 @@ class ReviewManager:
                     f"{'Local' if local else 'Offline'} Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}"
                 )
                 if res.returncode != 0:
-                    print_error(f"{'Local' if local else 'Offline'} reviewer failed with exit code {res.returncode}.\nSTDERR: {self._mask_token(res.stderr)}\nSTDOUT: {self._mask_token(res.stdout)}")
+                    print_error(
+                        f"{'Local' if local else 'Offline'} reviewer failed with exit code {res.returncode}.\nSTDERR: {self._mask_token(res.stderr)}\nSTDOUT: {self._mask_token(res.stdout)}"
+                    )
                 if res.stderr:
                     self._log(
                         f"{'Local' if local else 'Offline'} Review Warnings/Errors:\n{self._mask_token(res.stderr)}"
