@@ -59,8 +59,7 @@ ACTION_INSTRUCTIONS = (
     "2. Then, fetch and address any non-passing CI checks (e.g., using `gh pr checks` or viewing workflow logs). "
     "3. Run and fix all available tests and Linting locally. "
     "4. JUST BEFORE pushing your next changes, run a max of 2 iterations of offline review (`--offline`) to catch any remaining issues locally. "
-    "5. Finally, use SAFE_PUSH and trigger the next normal/local loop."
-)
+    "5. Finally, use SAFE_PUSH and trigger the next normal/local loop.")
 
 RATE_LIMIT_INSTRUCTION = " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
 
