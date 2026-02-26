@@ -664,9 +664,8 @@ class ReviewManager:
                 ),
             }
 
-    def _run_local_reviewer(
-        self, pr_number, model, local, offline
-    ):  # skipcq: PYL-R1710, PYL-W0613
+    def _run_local_reviewer(self, pr_number, model, local,
+                            offline):  # skipcq: PYL-R1710, PYL-W0613
         pr_label = f" PR #{pr_number}" if pr_number else " local changes"
         self._log(
             f"Triggering {'local' if local else 'offline'} review for{pr_label}..."
