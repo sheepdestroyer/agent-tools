@@ -78,10 +78,11 @@ def print_error(message, code=1):
 class ReviewManager:
     """Manager for handling pull request reviews via online or local/offline methods."""
 
-    def __init__(self, local=False, offline=False):
+    def __init__(self, local=False, offline=False, verbose=False):
         """Initialize the ReviewManager with given mode flags."""
         self.local = local
         self.offline = offline
+        self.verbose = verbose
         # Authenticate with GitHub
         self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get(
             "GH_TOKEN")
@@ -126,6 +127,8 @@ class ReviewManager:
 
     def _log(self, message):
         """Audit logging to stderr with timestamp."""
+        if not self.verbose:
+            return
         timestamp = datetime.now(timezone.utc).isoformat()
         # Tag logs as [AUDIT] for compliance and easier filtering
         print(f"[{timestamp}] [AUDIT] {message}", file=sys.stderr)
@@ -1007,6 +1010,7 @@ class ReviewManager:
 def main():
     """Main entry point for the PR Skill Agent Tool CLI."""
     parser = argparse.ArgumentParser(description="PR Skill Agent Tool")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose audit logging")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Trigger Review
@@ -1055,7 +1059,7 @@ def main():
         offline_mode = getattr(args, "offline", False)
         if local_mode and offline_mode:
             parser.error("Cannot specify both --local and --offline")
-        mgr = ReviewManager(local=local_mode, offline=offline_mode)
+        mgr = ReviewManager(local=local_mode, offline=offline_mode, verbose=getattr(args, "verbose", False))
 
         if args.command == "trigger_review":
             if not offline_mode and (args.pr_number is None
