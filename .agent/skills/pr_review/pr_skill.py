@@ -53,11 +53,13 @@ DEFAULT_VALIDATION_REVIEWER = os.environ.get("PR_REVIEW_VALIDATION_REVIEWER",
 
 # Common instructional strings for next_step
 ACTION_INSTRUCTIONS = (
-    "ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. "
-    "Pull and merge latest changes from the remote branch before starting addressing code reviews, "
-    "as bots may since have pushed formatting fixes to your previous changes. "
-    "Be sure to fetch, check, and address every comment and code review from all reviewers, AND ensure that you fetch and address any non-passing CI checks (e.g., using `gh pr checks`). "
-    "Run and fix all available tests and Linting. Then, JUST BEFORE pushing your next changes, run a max of 2 iterations of offline review (`--offline`) to catch any remaining issues locally."
+    "ANALYZE feedback -> FIX code -> DO NOT PUSH YET. "
+    "Pull and merge latest changes from the remote branch before starting addressing code reviews. "
+    "1. Be sure to fetch, check, and address every comment and code review from all reviewers. "
+    "2. Then, fetch and address any non-passing CI checks (e.g., using `gh pr checks` or viewing workflow logs). "
+    "3. Run and fix all available tests and Linting locally. "
+    "4. JUST BEFORE pushing your next changes, run a max of 2 iterations of offline review (`--offline`) to catch any remaining issues locally. "
+    "5. Finally, use SAFE_PUSH and trigger the next normal/local loop."
 )
 
 RATE_LIMIT_INSTRUCTION = " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
