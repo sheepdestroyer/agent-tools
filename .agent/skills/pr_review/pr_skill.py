@@ -664,7 +664,8 @@ class ReviewManager:
                 ),
             }
 
-    def _run_local_reviewer(self, pr_number, model, local, offline):  # skipcq: PYL-R1710
+    def _run_local_reviewer(self, pr_number, model, local,
+                            offline):  # skipcq: PYL-R1710
         pr_label = f" PR #{pr_number}" if pr_number else " local changes"
         self._log(
             f"Triggering {'local' if local else 'offline'} review for{pr_label}..."
@@ -731,7 +732,8 @@ class ReviewManager:
                 f"{'Local' if local else 'Offline'} reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
             )
 
-    def _trigger_online_review(self, pr_number, triggered_bots):  # skipcq: PYL-R1710
+    def _trigger_online_review(self, pr_number,
+                               triggered_bots):  # skipcq: PYL-R1710
         try:
             pr = self.repo.get_pull(pr_number)
             self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
