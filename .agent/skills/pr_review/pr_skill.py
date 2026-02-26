@@ -56,7 +56,7 @@ ACTION_INSTRUCTIONS = (
     "ANALYZE feedback -> FIX code -> DO NOT PUSH YET. "
     "Pull and merge latest changes from the remote branch before starting addressing code reviews. "
     "1. Be sure to fetch, check, and address every comment and code review from all reviewers. "
-    "2. Then, fetch and address any non-passing CI checks (e.g., using GitHub MCP tools like `pull_request_read` with method `get_status` instead of `gh` CLI). "
+    "2. Then, fetch and address any non-passing CI checks (e.g., using GitHub MCP tools like `pull_request_read` with method `get_status`, falling back to `gh` CLI if unavailable). "
     "3. Run and fix all available tests and Linting locally. "
     "4. JUST BEFORE pushing your next changes, run a max of 2 iterations of offline review (`--offline`) to catch any remaining issues locally. "
     "5. Finally, use SAFE_PUSH and trigger the next normal/local loop.")
