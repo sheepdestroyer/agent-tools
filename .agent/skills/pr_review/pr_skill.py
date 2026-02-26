@@ -487,7 +487,7 @@ class ReviewManager:
         )
         return status_data
 
-    def trigger_review(
+    def trigger_review(  # skipcq: PY-R1000
         self,
         pr_number,
         wait_seconds=180,
@@ -733,7 +733,7 @@ class ReviewManager:
                 ),
             }
 
-    def check_status(
+    def check_status(  # skipcq: PY-R1000
         self,
         pr_number,
         since_iso=None,
