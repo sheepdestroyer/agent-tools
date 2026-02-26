@@ -766,7 +766,7 @@ class ReviewManager:
         self._log(
             f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
         try:
-            res = subprocess.run(
+            res = subprocess.run(  # skipcq: BAN-B607
                 cmd,  # skipcq: BAN-B607
                 check=False,
                 capture_output=True,

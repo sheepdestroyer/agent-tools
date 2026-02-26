@@ -3,9 +3,6 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-import pr_skill
-from pr_skill import ReviewManager
-
 # Ensure the module can be imported
 sys.path.insert(
     0,
@@ -13,6 +10,9 @@ sys.path.insert(
         os.path.join(os.path.dirname(__file__), "..", ".agent", "skills",
                      "pr_review")),
 )
+
+import pr_skill  # noqa: E402
+from pr_skill import ReviewManager  # noqa: E402
 
 
 class TestPRReviewSkill(unittest.TestCase):
