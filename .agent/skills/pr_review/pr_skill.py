@@ -9,9 +9,11 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 
 from github import Auth, Github, GithubException
@@ -52,12 +54,13 @@ DEFAULT_VALIDATION_REVIEWER = os.environ.get("PR_REVIEW_VALIDATION_REVIEWER",
 
 # Common instructional strings for next_step
 ACTION_INSTRUCTIONS = (
-    "ANALYZE feedback -> FIX code -> SAFE_PUSH. DO NOT STOP. "
-    "Pull and merge latest changes from the remote branch before starting addressing code reviews, "
-    "as bots may since have pushed formatting fixes to your previous changes. "
-    "Be sure to address every comment and code review from all reviewers, ensure CI passes. "
-    "Run and fix all available tests and Linting before pushing your next changes."
-)
+    "ANALYZE feedback -> FIX code -> DO NOT PUSH YET. "
+    "Pull and merge latest changes from the remote branch before starting to address code reviews. "
+    "1. Be sure to fetch, check, and address every comment and code review from all reviewers. "
+    "2. Then, fetch and address any non-passing CI checks (e.g., using GitHub MCP tools like `pull_request_read` with method `get_status`, falling back to `gh` CLI if unavailable). "
+    "3. Run and fix all available tests and Linting locally. "
+    "4. JUST BEFORE pushing your next changes, run a max of 2 iterations of offline review (`--offline`) to catch any remaining issues locally. "
+    "5. Finally, use SAFE_PUSH and trigger the next normal/local loop.")
 
 RATE_LIMIT_INSTRUCTION = " If main reviewer says it just became rate-limited, address remaining code reviews then stop there."
 
@@ -74,15 +77,21 @@ def print_error(message, code=1):
 
 
 class ReviewManager:
+    """Manager for handling pull request reviews via online or local/offline methods."""
 
-    def __init__(self):
+    def __init__(self, local=False, offline=False, verbose=False):
+        """Initialize the ReviewManager with given mode flags."""
+        self.local = local
+        self.offline = offline
+        self.verbose = verbose
+        self.last_keepalive = time.time()
         # Authenticate with GitHub
         self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get(
             "GH_TOKEN")
-        if not self.token:
+        if not self.token and not self.offline:
             # Fallback to gh CLI for auth token if env var is missing
             try:
-                res = subprocess.run(
+                res = subprocess.run(  # skipcq: BAN-B607
                     ["gh", "auth", "token"],
                     capture_output=True,
                     text=True,
@@ -99,8 +108,11 @@ class ReviewManager:
                     f"No GITHUB_TOKEN found and 'gh' command failed: {e}")
 
         try:
-            self.g = Github(auth=Auth.Token(self.token))
-            self.repo = self._detect_repo()
+            if not self.offline:
+                self.g = Github(auth=Auth.Token(self.token))
+                self.repo = self._detect_repo()
+            else:
+                self.repo = None
             self._ensure_workspace()
         except (GithubException, OSError, ValueError) as e:
             # Mask token if present in error
@@ -109,23 +121,48 @@ class ReviewManager:
                 safe_msg = safe_msg.replace(self.token, "********")
             print_error(f"Initialization failed: {safe_msg}")
 
-    def _mask_token(self, text):
+    def mask_token(self, text):
         """Redacts the GitHub token from the given text."""
         if not self.token or not text:
             return text
         return text.replace(self.token, "********")
 
     def _log(self, message):
-        """Audit logging to stderr with timestamp."""
+        """Audit logging to stderr with timestamp. Always logs to file."""
         timestamp = datetime.now(timezone.utc).isoformat()
-        # Tag logs as [AUDIT] for compliance and easier filtering
-        print(f"[{timestamp}] [AUDIT] {message}", file=sys.stderr)
+        log_line = f"[{timestamp}] [AUDIT] {message}"
+
+        if hasattr(self, "log_file_path"):
+            try:
+                with open(self.log_file_path, "a", encoding="utf-8") as f:
+                    f.write(log_line + "\n")
+            except OSError:
+                pass
+
+        if not self.verbose:
+            return
+
+        print(log_line, file=sys.stderr)
+
+    def _sleep_with_keepalive(self, seconds):
+        """Sleeps for given seconds, printing a minimal keepalive every 120s to prevent CI timeouts."""
+        chunk_size = 30
+        elapsed = 0
+        while elapsed < seconds:
+            sleep_time = min(chunk_size, seconds - elapsed)
+            time.sleep(sleep_time)
+            elapsed += sleep_time
+            now = time.time()
+            if now - getattr(self, "last_keepalive", now) >= 120:
+                print("... [waiting]", file=sys.stderr, flush=True)
+                self._log("Keepalive emitted during wait.")
+                self.last_keepalive = now
 
     def _ensure_workspace(self):
         """Creates agent-workspace directory relative to repo root if possible."""
         try:
             # Try to find repo root
-            root = subprocess.run(
+            root = subprocess.run(  # skipcq: BAN-B607
                 ["git", "rev-parse", "--show-toplevel"],
                 capture_output=True,
                 text=True,
@@ -141,13 +178,14 @@ class ReviewManager:
             self.workspace = os.path.join(os.getcwd(), "agent-workspace")
 
         os.makedirs(self.workspace, exist_ok=True)
+        self.log_file_path = os.path.join(self.workspace, "pr_skill.log")
 
     def _detect_repo(self):
         """Auto-detects current repository from git remote (local check preferred)."""
         # 1. Try local git remote first (fast, no network)
         try:
             # Get origin URL
-            res = subprocess.run(
+            res = subprocess.run(  # skipcq: BAN-B607
                 ["git", "config", "--get", "remote.origin.url"],
                 capture_output=True,
                 text=True,
@@ -170,11 +208,10 @@ class ReviewManager:
         ):
             # Ignore local errors and fall back to gh
             self._log("Local git remote check failed, falling back to 'gh'...")
-            pass
 
         # 2. Fallback to gh CLI (slower, network dependent)
         try:
-            res = subprocess.run(
+            res = subprocess.run(  # skipcq: BAN-B607
                 ["gh", "repo", "view", "--json", "owner,name"],
                 capture_output=True,
                 text=True,
@@ -201,7 +238,7 @@ class ReviewManager:
         """
         try:
             # 1. Check for uncommitted changes
-            status_proc = subprocess.run(
+            status_proc = subprocess.run(  # skipcq: BAN-B607
                 ["git", "status", "--porcelain"],
                 capture_output=True,
                 text=True,
@@ -215,7 +252,7 @@ class ReviewManager:
                 )
 
             # 2. Get current branch
-            branch_proc = subprocess.run(
+            branch_proc = subprocess.run(  # skipcq: BAN-B607
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
@@ -228,7 +265,7 @@ class ReviewManager:
 
             return True, branch
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            return False, f"Git check failed: {self._mask_token(str(e))}"
+            return False, f"Git check failed: {self.mask_token(str(e))}"
         except subprocess.TimeoutExpired:
             return False, "Git check timed out."
 
@@ -249,7 +286,7 @@ class ReviewManager:
         try:
             # Fetch latest state from remote for accurate comparison
             # Suppress stdout to avoid polluting structured output; inherit stderr so prompts/hangs remain visible
-            subprocess.run(
+            subprocess.run(  # skipcq: BAN-B607
                 ["git", "fetch"],
                 check=True,
                 timeout=GIT_FETCH_TIMEOUT,
@@ -257,7 +294,7 @@ class ReviewManager:
             )
 
             # Get current branch
-            branch = subprocess.run(
+            branch = subprocess.run(  # skipcq: BAN-B607
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
@@ -266,26 +303,28 @@ class ReviewManager:
             ).stdout.strip()
 
             # Check if upstream is configured
-            upstream_proc = subprocess.run(
+            upstream_proc = subprocess.run(  # skipcq: BAN-B607
                 ["git", "rev-parse", "--abbrev-ref", "@{u}"],
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
+                check=False,
             )
             if upstream_proc.returncode != 0:
                 return (
                     False,
-                    f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.",
+                    f"No upstream configured for branch '{branch}'. Please set upstream via 'git push -q -u origin {branch}' then use safe_push.",
                 )
 
             # Check for unpushed commits and upstream changes
             # git rev-list --left-right --count @{u}...HEAD
             # Output: "behind  ahead" (left=@{u}, right=HEAD)
-            rev_list = subprocess.run(
+            rev_list = subprocess.run(  # skipcq: BAN-B607
                 ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
+                check=False,
             )
             if rev_list.returncode == 0:
                 try:
@@ -316,7 +355,7 @@ class ReviewManager:
                 # Fallback/General error
                 return False, f"Failed to check divergence: {rev_list.stderr.strip()}"
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-            return False, f"Git check failed: {self._mask_token(str(e))}"
+            return False, f"Git check failed: {self.mask_token(str(e))}"
 
         return True, "Code is clean and pushed."
 
@@ -337,20 +376,19 @@ class ReviewManager:
         branch = branch_or_msg
 
         # Separately check upstream
-
-        # Separately check upstream
         try:
-            upstream_proc = subprocess.run(
+            upstream_proc = subprocess.run(  # skipcq: BAN-B607
                 ["git", "rev-parse", "--abbrev-ref", "@{u}"],
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
+                check=False,
             )
             if upstream_proc.returncode != 0:
                 return {
                     "status": "error",
                     "message":
-                    f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.",
+                    f"No upstream configured for branch '{branch}'. Please set upstream via 'git push -q -u origin {branch}' then use safe_push.",
                     "next_step": "Configure upstream and retry safe_push.",
                 }
         except subprocess.TimeoutExpired:
@@ -367,11 +405,26 @@ class ReviewManager:
                 "next_step": "Check git configuration and retry safe_push.",
             }
 
-        # Attempt push
+        # Attempt push using fetch, rebase, and push pattern to avoid conflicts
         try:
-            subprocess.run(["git", "push"],
-                           check=True,
-                           timeout=GIT_PUSH_TIMEOUT)
+            # 1. Fetch
+            subprocess.run(  # skipcq: BAN-B607
+                ["git", "fetch", "origin", branch],
+                check=True,
+                timeout=GIT_SHORT_TIMEOUT,
+            )
+            # 2. Rebase
+            subprocess.run(  # skipcq: BAN-B607
+                ["git", "rebase", f"origin/{branch}"],
+                check=True,
+                timeout=GIT_SHORT_TIMEOUT,
+            )
+            # 3. Push
+            subprocess.run(  # skipcq: BAN-B607
+                ["git", "push", "--force-with-lease", "origin", branch],
+                check=True,
+                timeout=GIT_PUSH_TIMEOUT,
+            )
             return {
                 "status": "success",
                 "message": "Push successful.",
@@ -383,7 +436,7 @@ class ReviewManager:
                 FileNotFoundError,
         ) as e:
             # Mask token if present in error
-            safe_err = self._mask_token(str(e))
+            safe_err = self.mask_token(str(e))
             return {
                 "status":
                 "error",
@@ -448,7 +501,7 @@ class ReviewManager:
                     self._log(
                         f"Main reviewer has not responded yet. Waiting {poll_interval}s before next poll..."
                     )
-                    time.sleep(poll_interval)
+                    self._sleep_with_keepalive(poll_interval)
             except KeyboardInterrupt:
                 self._log("\nPolling interrupted by user.")
                 # Return distinct status for interruption vs timeout
@@ -481,50 +534,161 @@ class ReviewManager:
         )
         return status_data
 
-    def trigger_review(
+    def trigger_review(  # skipcq: PY-R1000
         self,
         pr_number,
         wait_seconds=180,
         validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
+        model="gemini-2.5-pro",
     ):
         """
         1. Checks local state (Hard Constraint).
-        2. Post comments to trigger bots.
+        2. Post comments to trigger bots or run local/offline reviewer.
         3. Polls for main reviewer feedback.
         """
+        local = self.local
+        offline = self.offline
         # Step 1: Enforce Push
-        is_safe, msg = self._check_local_state()
-        if not is_safe:
-            print_error(
-                f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually."
-            )
-
-        self._log(f"State verified: {msg}")
+        if not offline:
+            is_safe, msg = self._check_local_state()
+            if not is_safe:
+                error_dict = {
+                    "status": "error",
+                    "message":
+                    f"FAILED: {msg}\nTip: Use the 'safe_push' tool or the 'git sync-push' alias. Raw 'git push' is prohibited.",
+                    "code": 1,
+                }
+                print_json(error_dict)
+                sys.exit(1)
+            self._log(f"State verified: {msg}")
+        else:
+            self._log("Offline mode: Skipping remote state checks.")
 
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
 
-        # Step 2: Trigger Bots
+        # Step 2: Trigger Bots or Run Local/Offline Reviewer
         triggered_bots = []
-        try:
-            pr = self.repo.get_pull(pr_number)
-            self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
+        local_review_item = None
 
-            for cmd in REVIEW_COMMANDS:
-                pr.create_issue_comment(cmd)
-                self._log(f"  Posted: {cmd}")
-                triggered_bots.append(cmd)
+        if local or offline:
+            local_review_item = self._run_local_reviewer(
+                pr_number, model, local, offline)
+            if local_review_item and offline:
+                triggered_bots.append("/code-review")
+                return {
+                    "status":
+                    "success",
+                    "message":
+                    "Offline review completed locally.",
+                    "triggered_bots":
+                    triggered_bots,
+                    "initial_status": {
+                        "status": "success",
+                        "pr_number": pr_number,
+                        "checked_at_utc":
+                        datetime.now(timezone.utc).isoformat(),
+                        "new_item_count": 1,
+                        "items": [local_review_item],
+                        "main_reviewer": {
+                            "user": "gemini-cli-review",
+                            "state": "COMMENTED",
+                        },
+                    },
+                    "next_step":
+                    "Analyze the feedback in 'initial_status.items' and implement fixes. Proceed directly to Step 4 (Analyze & Implement).",
+                }
+            if local_review_item:
+                triggered_bots.append("/code-review")
+        else:
+            if not self._trigger_online_review(pr_number, triggered_bots):
+                return None
 
-            self._log("All review bots triggered successfully.")
+        # Step 3: Poll for Main Reviewer Response (Enforce Loop Rule)
+        if local:
+            wait_time = wait_seconds if wait_seconds is not None else 120
+            if pr_number:
+                if wait_time > 0:
+                    self._log("-" * 40)
+                    self._log(
+                        f"Auto-waiting {wait_time} seconds for independent online human/bot comments..."
+                    )
+                    try:
+                        self._sleep_with_keepalive(wait_time)
+                    except KeyboardInterrupt:
+                        self._log(
+                            "\nWait interrupted. Checking status immediately..."
+                        )
 
-            # Step 3: Poll for Main Reviewer Response (Enforce Loop Rule)
+                self._log("-" * 40)
+                self._log("Fetching status from GitHub...")
+                try:
+                    status_data = self.check_status(
+                        pr_number,
+                        since_iso=start_time.isoformat(),
+                        return_data=True,
+                        validation_reviewer=validation_reviewer,
+                    )
+                except GithubException as e:
+                    self._log(
+                        f"GitHub polling failed: {self.mask_token(str(e))}")
+                    status_data = {
+                        "status": "success",
+                        "items": [],
+                        "next_step": "Analyze feedback and implement fixes.",
+                    }
+            else:
+                status_data = {
+                    "status": "success",
+                    "items": [],
+                    "next_step": "Analyze feedback and implement fixes.",
+                }
+
+            if local_review_item:
+                if status_data.get("status") == "error":
+                    status_data = {
+                        "status": "success",
+                        "items": [],
+                        "next_step": "Analyze feedback and implement fixes.",
+                    }
+                status_data.setdefault("items",
+                                       []).insert(0, local_review_item)
+                status_data["new_item_count"] = len(status_data["items"])
+                status_data["main_reviewer"] = {
+                    "user": "gemini-cli-review",
+                    "state": "COMMENTED",
+                }
+                status_data["next_step"] = (
+                    f"New feedback received. {ACTION_INSTRUCTIONS}")
+
+            message = (
+                "Triggered local review and fetched online comments."
+                if pr_number else
+                "Triggered local review (no PR number; GitHub polling skipped)."
+            )
+
+            return {
+                "status":
+                "success",
+                "message":
+                message,
+                "triggered_bots":
+                triggered_bots,
+                "initial_status":
+                status_data,
+                "next_step":
+                status_data.get("next_step",
+                                "Analyze feedback and implement fixes."),
+            }
+
+        else:
             if wait_seconds > 0:
                 self._log("-" * 40)
                 self._log(
                     f"Auto-waiting {wait_seconds} seconds for initial bot responses..."
                 )
                 try:
-                    time.sleep(wait_seconds)
+                    self._sleep_with_keepalive(wait_seconds)
                 except KeyboardInterrupt:
                     self._log(
                         "\nWait interrupted. Checking status immediately...")
@@ -534,7 +698,6 @@ class ReviewManager:
                     "Polling for main reviewer feedback (enforcing Loop Rule)..."
                 )
 
-                # Poll until main reviewer responds or timeout
                 status_data = self._poll_for_main_reviewer(
                     pr_number=pr_number,
                     since_iso=start_time.isoformat(),
@@ -572,10 +735,111 @@ class ReviewManager:
                 ),
             }
 
-        except GithubException as e:
-            print_error(f"GitHub API Error: {self._mask_token(str(e))}")
+    def _run_local_reviewer(self, pr_number, model, local,
+                            offline):  # skipcq: PYL-R1710, PY-R1000
+        """Run the local offline review process using gemini-cli."""
+        # skipcq: PYL-R1710
+        pr_label = f" PR #{pr_number}" if pr_number else " local changes"
+        self._log(
+            f"Triggering {'local' if local else 'offline'} review for{pr_label}..."
+        )
+        settings_path = os.path.join(os.path.dirname(__file__),
+                                     "settings.json")
+        settings = {"gemini_cli_channel": "preview", "local_model": model}
+        try:
+            if os.path.exists(settings_path):
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    settings.update(json.load(f))
+        except (OSError, json.JSONDecodeError) as e:
+            self._log(f"Warning: Failed to load {settings_path}: {e}")
 
-    def check_status(
+        channel = settings.get("gemini_cli_channel", "preview")
+        allowed_channels = {"preview", "latest", "stable", "beta"}
+        if channel not in allowed_channels:
+            print_error(
+                f"Invalid gemini_cli_channel '{channel}'. Allowed: {sorted(allowed_channels)}"
+            )
+
+        selected_model = settings.get("local_model") or model
+        if not isinstance(selected_model, str) or not selected_model.strip():
+            print_error(
+                "Invalid or empty local_model in settings.json or CLI arguments"
+            )
+
+        pkg = f"@google/gemini-cli@{channel}"
+
+        npx_path = shutil.which("npx")
+        if not npx_path:
+            print_error("npx executable not found in PATH")
+
+        cmd = [
+            npx_path,
+            "-y",
+            pkg,
+            "--approval-mode",
+            "yolo",
+            "--model",
+            str(selected_model),
+            "--prompt",
+            "/code-review",
+        ]
+        self._log(
+            f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
+        try:
+            res = subprocess.run(  # skipcq: BAN-B607
+                cmd,  # skipcq: BAN-B607
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            clean_stdout = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "",
+                                  res.stdout)
+            self._log(
+                f"{'Local' if local else 'Offline'} Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}"
+            )
+            if res.returncode != 0:
+                print_error(
+                    f"{'Local' if local else 'Offline'} reviewer failed with exit code {res.returncode}.\nSTDERR: {self.mask_token(res.stderr)}\nSTDOUT: {self.mask_token(res.stdout)}"
+                )
+            if res.stderr:
+                self._log(
+                    f"{'Local' if local else 'Offline'} Review Warnings/Errors:\n{self.mask_token(res.stderr)}"
+                )
+
+            return {
+                "type": "local_review" if local else "offline_review",
+                "user": "gemini-cli-review",
+                "body": clean_stdout,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        except subprocess.TimeoutExpired as e:
+            print_error(
+                f"{'Local' if local else 'Offline'} reviewer timed out after {e.timeout}s."
+            )
+        except FileNotFoundError as e:
+            print_error(
+                f"{'Local' if local else 'Offline'} reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
+            )
+            return None
+
+    def _trigger_online_review(self, pr_number, triggered_bots):
+        """Trigger an online review by posting bot commands to a specific PR."""
+        try:
+            pr = self.repo.get_pull(pr_number)
+            self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
+            for c in REVIEW_COMMANDS:
+                pr.create_issue_comment(c)
+                self._log(f"  Posted: {c}")
+                triggered_bots.append(c)
+            self._log("All review bots triggered successfully.")
+            return True
+        except GithubException as e:
+            print_error(f"GitHub API Error: {self.mask_token(str(e))}")
+            return False
+
+    def check_status(  # skipcq: PY-R1000
         self,
         pr_number,
         since_iso=None,
@@ -596,6 +860,18 @@ class ReviewManager:
             return dt_obj.astimezone(timezone.utc)
 
         try:
+            if self.offline:
+                if return_data:
+                    return {
+                        "status":
+                        "error",
+                        "message":
+                        "Status check is not supported in offline mode as it requires GitHub API access.",
+                    }
+                print_error(
+                    "Status check is not supported in offline mode as it requires GitHub API access."
+                )
+
             pr = self.repo.get_pull(pr_number)
 
             since_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -638,8 +914,8 @@ class ReviewManager:
             # 2. Review Comments (Inline)
             # Fetch all review comments to ensure we catch edits (since param might only check creation time)
             for comment in pr.get_review_comments():
-                # Use updated_at to catch edits
-                comment_dt = get_aware_utc_datetime(comment.updated_at)
+                # Filter by created_at to avoid falsely flagging edited old comments as new feedback
+                comment_dt = get_aware_utc_datetime(comment.created_at)
                 if comment_dt and comment_dt >= since_dt:
                     new_feedback.append({
                         "type":
@@ -666,7 +942,7 @@ class ReviewManager:
             reviews = list(pr.get_reviews())
             for review in reviews:
                 if (review.submitted_at
-                        ):  # Ensure submitted_at is not None before processing
+                    ):  # Ensure submitted_at is not None before processing
                     review_dt = get_aware_utc_datetime(review.submitted_at)
                     if review_dt and review_dt >= since_dt:
                         new_feedback.append({
@@ -683,7 +959,7 @@ class ReviewManager:
                         })
 
             # Determine next_step based on findings AND validation_reviewer
-            next_step = "Wait for reviews."
+            next_step = "Wait for more reviews. Loop again. Be autonomous, do not stop the cycle prematurely."
             has_changes_requested = any(
                 item.get("state") == "CHANGES_REQUESTED"
                 for item in new_feedback
@@ -762,11 +1038,11 @@ class ReviewManager:
                             and item.get("state") == "APPROVED")
                 ]
                 if other_feedback:
-                    next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
+                    next_step = f"New feedback received! {ACTION_INSTRUCTIONS} Be autonomous, DO NOT STOP YET: After fixing, use safe_push then loop again."
                 else:
                     next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
             elif new_feedback:
-                next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
+                next_step = f"New feedback received! {ACTION_INSTRUCTIONS} Be autonomous, DO NOT STOP YET: After fixing, use safe_push then loop again."
             else:
                 next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
 
@@ -785,24 +1061,27 @@ class ReviewManager:
 
             if return_data:
                 return output
-            else:
-                print_json(output)
-                return output
+            print_json(output)
+            return output
 
         except GithubException as e:
             if return_data:
                 raise
-            print_error(f"GitHub API Error: {self._mask_token(str(e))}")
+            print_error(f"GitHub API Error: {self.mask_token(str(e))}")
 
 
 def main():
+    """Main entry point for the PR Skill Agent Tool CLI."""
     parser = argparse.ArgumentParser(description="PR Skill Agent Tool")
+    parser.add_argument("--verbose",
+                        action="store_true",
+                        help="Enable verbose audit logging")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Trigger Review
     p_trigger = subparsers.add_parser("trigger_review",
                                       help="Trigger reviews safely")
-    p_trigger.add_argument("pr_number", type=int)
+    p_trigger.add_argument("pr_number", type=int, nargs="?", default=None)
     p_trigger.add_argument(
         "--wait",
         type=int,
@@ -813,6 +1092,21 @@ def main():
         "--validation-reviewer",
         default=DEFAULT_VALIDATION_REVIEWER,
         help="Username of the main reviewer that must approve",
+    )
+    p_trigger.add_argument(
+        "--local",
+        action="store_true",
+        help="Run in local mode (runs gemini-cli-review, waits 120s for GitHub comments)",
+    )
+    p_trigger.add_argument(
+        "--offline",
+        action="store_true",
+        help="Run completely offline without pushing to GitHub. Only runs gemini-cli-review locally.",
+    )
+    p_trigger.add_argument(
+        "--model",
+        default="gemini-2.5-pro",
+        help="Model to use for local/offline review",
     )
 
     # Status
@@ -831,13 +1125,26 @@ def main():
     args = parser.parse_args()
 
     try:
-        mgr = ReviewManager()
+        local_mode = getattr(args, "local", False)
+        offline_mode = getattr(args, "offline", False)
+        if local_mode and offline_mode:
+            parser.error("Cannot specify both --local and --offline")
+        mgr = ReviewManager(
+            local=local_mode,
+            offline=offline_mode,
+            verbose=getattr(args, "verbose", False),
+        )
 
         if args.command == "trigger_review":
+            if not offline_mode and (args.pr_number is None
+                                     or args.pr_number <= 0):
+                parser.error(
+                    "pr_number is required unless --offline is specified")
             result = mgr.trigger_review(
                 args.pr_number,
                 wait_seconds=args.wait,
                 validation_reviewer=args.validation_reviewer,
+                model=getattr(args, "model", "gemini-2.5-pro"),
             )
             print_json(result)
         elif args.command == "status":
@@ -849,13 +1156,18 @@ def main():
             print_json(result)
             if result["status"] != "success":
                 sys.exit(1)
-    except Exception as e:
+    except Exception as e:  # skipcq: PYL-W0703, PYL-W0718, PTC-W0045
         # Catch-all for unhandled exceptions to prevent raw tracebacks in JSON output
         # Log full traceback to stderr for debugging
-        sys.stderr.write(f"CRITICAL ERROR: {str(e)}\n")
-        import traceback
+        error_msg = str(e)
+        if "mgr" in locals() and hasattr(mgr, "mask_token"):
+            error_msg = mgr.mask_token(error_msg)
+        sys.stderr.write(f"CRITICAL ERROR: {error_msg}\n")
 
-        traceback.print_exc(file=sys.stderr)
+        tb = traceback.format_exc()
+        if "mgr" in locals() and hasattr(mgr, "mask_token"):
+            tb = mgr.mask_token(tb)
+        sys.stderr.write(tb)
 
         # Output clean JSON error
         print(
