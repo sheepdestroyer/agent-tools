@@ -11,7 +11,7 @@
 *   **Priority**: Prioritize addressing actual errors over stylistic warnings during automated cycles unless specifically requested.
 
 ## 3. Safe Git Push Workflow
-*   **Mandate**: You must ALWAYS use the safe-push pattern before pushing to a remote branch to prevent merge conflicts and push rejections. This means executing a fetch, followed by a rebase, and then a push. To reduce output noise, use the quiet flag (`-q` or `--quiet`) for these commands:
+*   **Mandate**: You must ALWAYS use `.agent/skills/pr_review/pr_skill.py safe_push` or the `git sync-push` alias before pushing to a remote branch. Raw `git push` is **STRICTLY PROHIBITED** to prevent merge conflicts and push rejections.
     ```bash
     git fetch -q origin <branch> && git rebase -q origin/<branch> && git push -q --force-with-lease origin <branch>
     ```

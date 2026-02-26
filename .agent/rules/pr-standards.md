@@ -11,10 +11,10 @@ A Review Cycle is a **LOOP**, not a check.
 *   **Prohibition**: Never stop after fixing issues without re-verifying with the bot. Never trigger new reviews without first checking existing feedback using `pr_skill.py status`.
 
 ## 2. Push Before Trigger
-**STRICT RULE**: You MUST `git push` your changes BEFORE triggering an online or local review.
+**STRICT RULE**: You MUST `safe_push` or `git sync-push` your changes BEFORE triggering an online or local review. Never use a raw `git push`.
 *   *Note: This rule is bypassed during the Phase 1 Offline Pre-Review loop where changes are reviewed completely locally before pushing.*
-*   **Single Push Per Cycle**: Between online loops, only one `git push` must happen per cycle: just before triggering online reviews. Do NOT push intermediate offline fixes or CI check attempts individually. Batch them up.
-*   **Safe Push Pattern**: To avoid push rejection loops due to remote changes (like bot commits), always fetch and rebase before pushing (or use the `git sync-push` alias). When pushing, prefer `git push --force-with-lease` to safely overwrite while preventing accidental loss of others' work.
+*   **Single Push Per Cycle**: Between online loops, only one push must happen per cycle: just before triggering online reviews. Do NOT push intermediate offline fixes or CI check attempts individually. Batch them up.
+*   **Safe Push Pattern**: To avoid push rejection loops due to remote changes (like bot commits), you MUST use `python3 .agent/skills/pr_review/pr_skill.py safe_push` or the `git sync-push` alias. This handles fetching and rebasing automatically. Raw `git push` is prohibited.
 *   **Mandatory Testing**: All test suites must pass before pushing changes.
 *   Triggering a review on unpushed code results in outdated feedback and wastes API rate limits.
 *   Always verify `git status` is clean and `git log` shows your commit before running `gh pr comment`.
@@ -54,7 +54,7 @@ A Review Cycle is a **LOOP**, not a check.
 ## 9. Agent Autonomy
 *   **No Idling**: Agents must actively monitor PR status. Do NOT exit/notify the user just to wait for a bot or a long process.
 *   **Polling Strategy**: Use GitHub MCP tools (`mcp_github_pull_request_read`) for reliable, non-blocking status polling. Wait ~3 minutes after triggering before first check, then poll every 2 minutes.
-*   **Autonomous Action**: Agents are AUTHORIZED and REQUIRED to `git commit` and `git push` fixes autonomously if tests pass. Do not ask the user to push for you.
+*   **Autonomous Action**: Agents are AUTHORIZED and REQUIRED to `git commit` and use `safe_push` or `git sync-push` autonomously if tests pass. Do not ask the user to push for you.
 *   **Self-Correction**: If a tool fails (e.g., specific monitoring script), fallback to GitHub MCP or raw `gh` commands immediately.
 
 ## 10. Direct Tool Usage Only

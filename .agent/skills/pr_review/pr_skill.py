@@ -313,7 +313,7 @@ class ReviewManager:
             if upstream_proc.returncode != 0:
                 return (
                     False,
-                    f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.",
+                    f"No upstream configured for branch '{branch}'. Please set upstream via 'git push -q -u origin {branch}' then use safe_push.",
                 )
 
             # Check for unpushed commits and upstream changes
@@ -388,7 +388,7 @@ class ReviewManager:
                 return {
                     "status": "error",
                     "message":
-                    f"No upstream configured for branch '{branch}'. Please 'git push -u origin {branch}' first.",
+                    f"No upstream configured for branch '{branch}'. Please set upstream via 'git push -q -u origin {branch}' then use safe_push.",
                     "next_step": "Configure upstream and retry safe_push.",
                 }
         except subprocess.TimeoutExpired:
@@ -553,7 +553,7 @@ class ReviewManager:
             is_safe, msg = self._check_local_state()
             if not is_safe:
                 print_error(
-                    f"FAILED: {msg}\nTip: Use the 'safe_push' tool or run 'git push' manually."
+                    f"FAILED: {msg}\nTip: Use the 'safe_push' tool or the 'git sync-push' alias. Raw 'git push' is prohibited."
                 )
             self._log(f"State verified: {msg}")
         else:
