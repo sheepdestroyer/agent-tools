@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -538,7 +539,7 @@ class ReviewManager:
         pr_number,
         wait_seconds=180,
         validation_reviewer=DEFAULT_VALIDATION_REVIEWER,
-        model="gemini-3.1-pro-preview",
+        model="gemini-2.5-pro",
     ):
         """
         1. Checks local state (Hard Constraint).
@@ -733,16 +734,30 @@ class ReviewManager:
             self._log(f"Warning: Failed to load {settings_path}: {e}")
 
         channel = settings.get("gemini_cli_channel", "preview")
+        allowed_channels = {"preview", "latest", "stable", "beta"}
+        if channel not in allowed_channels:
+            print_error(
+                f"Invalid gemini_cli_channel '{channel}'. Allowed: {sorted(allowed_channels)}"
+            )
+
+        selected_model = settings.get("local_model") or model
+        if not isinstance(selected_model, str) or not selected_model.strip():
+            print_error("Invalid or empty local_model in settings.json or CLI arguments")
+
         pkg = f"@google/gemini-cli@{channel}"
 
+        npx_path = shutil.which("npx")
+        if not npx_path:
+            print_error("npx executable not found in PATH")
+
         cmd = [
-            "npx",
+            npx_path,
             "-y",
             pkg,
             "--approval-mode",
             "yolo",
             "--model",
-            str(settings.get("local_model") or model),
+            str(selected_model),
             "--prompt",
             "/code-review",
         ]
@@ -1064,6 +1079,11 @@ def main():
         action="store_true",
         help="Run completely offline without pushing to GitHub. Only runs gemini-cli-review locally.",
     )
+    p_trigger.add_argument(
+        "--model",
+        default="gemini-2.5-pro",
+        help="Model to use for local/offline review",
+    )
 
     # Status
     p_status = subparsers.add_parser("status", help="Check review status")
@@ -1100,6 +1120,7 @@ def main():
                 args.pr_number,
                 wait_seconds=args.wait,
                 validation_reviewer=args.validation_reviewer,
+                model=getattr(args, "model", "gemini-2.5-pro"),
             )
             print_json(result)
         elif args.command == "status":
