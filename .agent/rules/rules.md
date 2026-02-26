@@ -18,3 +18,8 @@
     *Note: You may use the global `git sync-push -q` alias if available, or `git pull -q --rebase && git push -q`.*
     *   *Context*: Bots and continuous integration systems often push commits (like formatting or auto-fixes) directly to the remote branch while you are working. Blindly running `git push` without pulling and rebasing first will frequently lead to rejection errors and wasted context tokens trying to recover.
 *   **Priority**: This pattern is a strict requirement for all automated git operations.
+
+## 4. DeepSource CI Reviews
+*   **Mandate**: When retrieving DeepSource CI review issues, you MUST NOT use `curl` to fetch the raw HTML page and attempt to `grep` it. Instead, use the DeepSource API directly or use the `web_fetch` tool on the DeepSource run URL to extract the issues cleanly as Markdown.
+    *   *Context*: Fetching raw HTML pages for SPAs is noisy, broken, and wastes context tokens. The platform often provides a toggle to copy reviews as markdown, or an API that provides structured JSON.
+*   **Priority**: Strict requirement to prevent context window bloat and broken parsing.
