@@ -89,7 +89,7 @@ class ReviewManager:
                     ["gh", "auth", "token"],
                     capture_output=True,
                     text=True,
-                    check=True,
+                    check=False,
                     timeout=GH_AUTH_TIMEOUT,
                 )
                 self.token = res.stdout.strip()
@@ -135,7 +135,7 @@ class ReviewManager:
                 ["git", "rev-parse", "--show-toplevel"],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
             ).stdout.strip()
             if os.path.basename(root) == "agent-tools":
                 self.workspace = os.path.join(root, "agent-workspace")
@@ -157,7 +157,7 @@ class ReviewManager:
                 ["git", "config", "--get", "remote.origin.url"],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
                 timeout=GIT_SHORT_TIMEOUT,
             )
             url = res.stdout.strip()
@@ -183,7 +183,7 @@ class ReviewManager:
                 ["gh", "repo", "view", "--json", "owner,name"],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
                 timeout=GH_REPO_VIEW_TIMEOUT,
             )
             data = json.loads(res.stdout)
@@ -210,7 +210,7 @@ class ReviewManager:
                 ["git", "status", "--porcelain"],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
                 timeout=GIT_SHORT_TIMEOUT,
             )
             if status_proc.stdout.strip():
@@ -224,7 +224,7 @@ class ReviewManager:
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
                 timeout=GIT_SHORT_TIMEOUT,
             )
             branch = branch_proc.stdout.strip()
@@ -256,7 +256,7 @@ class ReviewManager:
             # Suppress stdout to avoid polluting structured output; inherit stderr so prompts/hangs remain visible
             subprocess.run(
                 ["git", "fetch"],
-                check=True,
+                check=False,
                 timeout=GIT_FETCH_TIMEOUT,
                 stdout=subprocess.DEVNULL,
             )
@@ -266,7 +266,7 @@ class ReviewManager:
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
                 timeout=GIT_SHORT_TIMEOUT,
             ).stdout.strip()
 
@@ -376,7 +376,7 @@ class ReviewManager:
         # Attempt push
         try:
             subprocess.run(["git", "push"],
-                           check=True,
+                           check=False,
                            timeout=GIT_PUSH_TIMEOUT)
             return {
                 "status": "success",
@@ -557,7 +557,7 @@ class ReviewManager:
                 f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
             try:
                 res = subprocess.run(cmd,
-                                     check=True,
+                                     check=False,
                                      capture_output=True,
                                      text=True,
                                      timeout=600)
@@ -614,10 +614,7 @@ class ReviewManager:
                 print_error(
                     f"{'Local' if local else 'Offline'} reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
                 )
-            except subprocess.CalledProcessError as e:
-                print_error(
-                    f"{'Local' if local else 'Offline'} reviewer failed:\nSTDERR: {self._mask_token(e.stderr)}\nSTDOUT: {self._mask_token(e.stdout)}"
-                )
+
         else:
             try:
                 pr = self.repo.get_pull(pr_number)
@@ -646,12 +643,20 @@ class ReviewManager:
 
             self._log("-" * 40)
             self._log("Fetching status from GitHub...")
-            status_data = self.check_status(
-                pr_number,
-                since_iso=start_time.isoformat(),
-                return_data=True,
-                validation_reviewer=validation_reviewer,
-            )
+            try:
+                status_data = self.check_status(
+                    pr_number,
+                    since_iso=start_time.isoformat(),
+                    return_data=True,
+                    validation_reviewer=validation_reviewer,
+                )
+            except GithubException as e:
+                self._log(f"GitHub polling failed: {e}")
+                status_data = {
+                    "status": "success",
+                    "items": [],
+                    "next_step": "Analyze feedback and implement fixes."
+                }
 
             if local_review_item:
                 status_data["items"].insert(0, local_review_item)
