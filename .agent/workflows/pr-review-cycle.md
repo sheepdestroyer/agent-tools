@@ -7,7 +7,7 @@ By default, the cycle consists of up to three phases.
 
 ### Phase 1: Offline Pre-Review Loop (Default for all new PRs)
 Start with a standard "offline" loop. Work completely offline without pushing to GitHub.
-1. **Prepare**: Run tests locally (`pytest`) and fix syntax errors.
+1. **Prepare**: Run tests locally (`pytest -q`) and fix syntax errors.
 2. **Trigger Offline Review**:
    ```bash
    python3 .agent/skills/pr_review/pr_skill.py trigger_review --offline
