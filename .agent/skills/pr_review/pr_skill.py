@@ -785,8 +785,7 @@ class ReviewManager:
             )
             return None
 
-    def _trigger_online_review(self, pr_number,
-                               triggered_bots):
+    def _trigger_online_review(self, pr_number, triggered_bots):
         """Trigger an online review by posting bot commands to a specific PR."""
         try:
             pr = self.repo.get_pull(pr_number)
