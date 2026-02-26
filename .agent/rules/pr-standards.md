@@ -13,6 +13,7 @@ A Review Cycle is a **LOOP**, not a check.
 ## 2. Push Before Trigger
 **STRICT RULE**: You MUST `git push` your changes BEFORE triggering an online or local review.
 *   *Note: This rule is bypassed during the Phase 1 Offline Pre-Review loop where changes are reviewed completely locally before pushing.*
+*   **Single Push Per Cycle**: Between online loops, only one `git push` must happen per cycle: just before triggering online reviews. Do NOT push intermediate offline fixes or CI check attempts individually. Batch them up.
 *   **Mandatory Testing**: All test suites must pass before pushing changes.
 *   Triggering a review on unpushed code results in outdated feedback and wastes API rate limits.
 *   Always verify `git status` is clean and `git log` shows your commit before running `gh pr comment`.

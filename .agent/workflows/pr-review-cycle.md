@@ -17,7 +17,7 @@ Start with a standard "offline" loop. Work completely offline without pushing to
 
 ### Phase 2: Online Review Loop (Normal Mode)
 Once the offline loop completes or reaches 5 iterations, switch to the normal online mode.
-1. **Push Changes**: `git push` your changes to the remote branch. **MANDATORY**: *All test suites must pass before pushing changes.*
+1. **Push Changes**: `git push` your changes to the remote branch. **MANDATORY**: *All test suites must pass before pushing changes. During any cycle, only one git push must happen: just before triggering online reviews.*
 2. **Trigger Reviews**: `python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}`
    *(This triggers GitHub bots and polls for feedback).*
 3. **Fetch & Analyze**: Address the feedback from GitHub bots. Immediately afterward, fetch and address any non-passing CI checks (e.g., using GitHub MCP tools like `pull_request_read` with method `get_status`, falling back to `gh` CLI if unavailable). **Do not push yet.**
@@ -26,7 +26,7 @@ Once the offline loop completes or reaches 5 iterations, switch to the normal on
 
 ### Phase 3: Local Mode Fallback (If Rate Limited)
 If the main reviewer (e.g., `gemini-code-assist[bot]`) states that it is currently **rate limited**, switch to Local Mode for subsequent iterations:
-1. **Push Changes**: `git push` your changes to the remote branch.
+1. **Push Changes**: `git push` your changes to the remote branch. **MANDATORY**: *During any cycle, only one git push must happen: just before triggering online reviews.*
 2. **Trigger Local Review**:
    ```bash
    python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER} --local
