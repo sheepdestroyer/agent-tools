@@ -511,9 +511,7 @@ class ReviewManager:
                 )
             self._log(f"State verified: {msg}")
         else:
-            self._log(
-                "Offline mode: Skipping remote state checks."
-            )
+            self._log("Offline mode: Skipping remote state checks.")
 
         # Capture start time for status check
         start_time = datetime.now(timezone.utc)
@@ -591,7 +589,8 @@ class ReviewManager:
                         "items": [],
                         "next_step": "Analyze feedback and implement fixes.",
                     }
-                status_data.setdefault("items", []).insert(0, local_review_item)
+                status_data.setdefault("items",
+                                       []).insert(0, local_review_item)
                 status_data["new_item_count"] = len(status_data["items"])
                 status_data["main_reviewer"] = {
                     "user": "gemini-cli-review",
@@ -670,8 +669,8 @@ class ReviewManager:
                 ),
             }
 
-    def _run_local_reviewer(self, pr_number, model, local,
-                            offline):  # skipcq: PYL-R1710, PYL-W0613
+    def _run_local_reviewer(self, pr_number, model, local, offline):  # skipcq: PYL-R1710, PYL-W0613
+        # skipcq: PYL-R1710
         pr_label = f" PR #{pr_number}" if pr_number else " local changes"
         self._log(
             f"Triggering {'local' if local else 'offline'} review for{pr_label}..."
@@ -737,6 +736,7 @@ class ReviewManager:
             print_error(
                 f"{'Local' if local else 'Offline'} reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
             )
+            return None
 
     def _trigger_online_review(self, pr_number,
                                triggered_bots):  # skipcq: PYL-R1710
@@ -751,6 +751,7 @@ class ReviewManager:
             return True
         except GithubException as e:
             print_error(f"GitHub API Error: {self._mask_token(str(e))}")
+            return False
 
     def check_status(  # skipcq: PY-R1000
         self,
