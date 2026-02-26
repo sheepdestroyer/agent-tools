@@ -730,7 +730,6 @@ class ReviewManager:
             print_error(
                 f"{'Local' if local else 'Offline'} reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
             )
-        return None
 
     def _trigger_online_review(self, pr_number, triggered_bots):
         try:
@@ -744,7 +743,6 @@ class ReviewManager:
             return True
         except GithubException as e:
             print_error(f"GitHub API Error: {self._mask_token(str(e))}")
-            return False
 
     def check_status(  # skipcq: PY-R1000
         self,
