@@ -90,7 +90,7 @@ class ReviewManager:
                     ["gh", "auth", "token"],
                     capture_output=True,
                     text=True,
-                    check=False,
+                    check=True,
                     timeout=GH_AUTH_TIMEOUT,
                 )
                 self.token = res.stdout.strip()
@@ -136,7 +136,7 @@ class ReviewManager:
                 ["git", "rev-parse", "--show-toplevel"],
                 capture_output=True,
                 text=True,
-                check=False,
+                check=True,
             ).stdout.strip()
             if os.path.basename(root) == "agent-tools":
                 self.workspace = os.path.join(root, "agent-workspace")
@@ -158,7 +158,7 @@ class ReviewManager:
                 ["git", "config", "--get", "remote.origin.url"],
                 capture_output=True,
                 text=True,
-                check=False,
+                check=True,
                 timeout=GIT_SHORT_TIMEOUT,
             )
             url = res.stdout.strip()
@@ -184,7 +184,7 @@ class ReviewManager:
                 ["gh", "repo", "view", "--json", "owner,name"],
                 capture_output=True,
                 text=True,
-                check=False,
+                check=True,
                 timeout=GH_REPO_VIEW_TIMEOUT,
             )
             data = json.loads(res.stdout)
@@ -211,7 +211,7 @@ class ReviewManager:
                 ["git", "status", "--porcelain"],
                 capture_output=True,
                 text=True,
-                check=False,
+                check=True,
                 timeout=GIT_SHORT_TIMEOUT,
             )
             if status_proc.stdout.strip():
@@ -225,7 +225,7 @@ class ReviewManager:
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
-                check=False,
+                check=True,
                 timeout=GIT_SHORT_TIMEOUT,
             )
             branch = branch_proc.stdout.strip()
@@ -257,7 +257,7 @@ class ReviewManager:
             # Suppress stdout to avoid polluting structured output; inherit stderr so prompts/hangs remain visible
             subprocess.run(
                 ["git", "fetch"],
-                check=False,
+                check=True,
                 timeout=GIT_FETCH_TIMEOUT,
                 stdout=subprocess.DEVNULL,
             )
@@ -267,7 +267,7 @@ class ReviewManager:
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 capture_output=True,
                 text=True,
-                check=False,
+                check=True,
                 timeout=GIT_SHORT_TIMEOUT,
             ).stdout.strip()
 
@@ -277,7 +277,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
-                check=False,
+                check=True,
             )
             if upstream_proc.returncode != 0:
                 return (
@@ -293,7 +293,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
-                check=False,
+                check=True,
             )
             if rev_list.returncode == 0:
                 try:
@@ -351,7 +351,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
-                check=False,
+                check=True,
             )
             if upstream_proc.returncode != 0:
                 return {
@@ -377,7 +377,7 @@ class ReviewManager:
         # Attempt push
         try:
             subprocess.run(["git", "push"],
-                           check=False,
+                           check=True,
                            timeout=GIT_PUSH_TIMEOUT)
             return {
                 "status": "success",
@@ -558,7 +558,7 @@ class ReviewManager:
                 f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
             try:
                 res = subprocess.run(cmd,
-                                     check=False,
+                                     check=True,
                                      capture_output=True,
                                      text=True,
                                      timeout=600)
