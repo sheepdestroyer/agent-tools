@@ -655,7 +655,7 @@ class ReviewManager:
                 status_data = {
                     "status": "success",
                     "items": [],
-                    "next_step": "Analyze feedback and implement fixes."
+                    "next_step": "Analyze feedback and implement fixes.",
                 }
 
             if local_review_item:
