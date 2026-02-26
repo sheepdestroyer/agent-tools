@@ -552,9 +552,13 @@ class ReviewManager:
         if not offline:
             is_safe, msg = self._check_local_state()
             if not is_safe:
-                print_error(
-                    f"FAILED: {msg}\nTip: Use the 'safe_push' tool or the 'git sync-push' alias. Raw 'git push' is prohibited."
-                )
+                error_dict = {
+                    "status": "error",
+                    "message": f"FAILED: {msg}\nTip: Use the 'safe_push' tool or the 'git sync-push' alias. Raw 'git push' is prohibited.",
+                    "code": 1
+                }
+                print_json(error_dict)
+                sys.exit(1)
             self._log(f"State verified: {msg}")
         else:
             self._log("Offline mode: Skipping remote state checks.")
