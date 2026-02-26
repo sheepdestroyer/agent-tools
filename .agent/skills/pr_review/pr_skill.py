@@ -742,7 +742,9 @@ class ReviewManager:
 
         selected_model = settings.get("local_model") or model
         if not isinstance(selected_model, str) or not selected_model.strip():
-            print_error("Invalid or empty local_model in settings.json or CLI arguments")
+            print_error(
+                "Invalid or empty local_model in settings.json or CLI arguments"
+            )
 
         pkg = f"@google/gemini-cli@{channel}"
 
@@ -764,11 +766,13 @@ class ReviewManager:
         self._log(
             f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
         try:
-            res = subprocess.run(cmd,  # skipcq: BAN-B607
-                                 check=False,
-                                 capture_output=True,
-                                 text=True,
-                                 timeout=600)
+            res = subprocess.run(
+                cmd,  # skipcq: BAN-B607
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
             clean_stdout = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "",
                                   res.stdout)
             self._log(
