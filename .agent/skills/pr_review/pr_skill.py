@@ -523,115 +523,36 @@ class ReviewManager:
         local_review_item = None
 
         if local or offline:
-            pr_label = f" PR #{pr_number}" if pr_number else " local changes"
-            self._log(
-                f"Triggering {'local' if local else 'offline'} review for{pr_label}..."
-            )
-            settings_path = os.path.join(os.path.dirname(__file__),
-                                         "settings.json")
-            settings = {
-                "gemini_cli_channel": "preview",
-                "local_model": model,
-            }
-            try:
-                if os.path.exists(settings_path):
-                    with open(settings_path, "r", encoding="utf-8") as f:
-                        settings.update(json.load(f))
-            except (OSError, json.JSONDecodeError) as e:
-                self._log(f"Warning: Failed to load {settings_path}: {e}")
-
-            channel = settings.get("gemini_cli_channel", "preview")
-            pkg = f"@google/gemini-cli@{channel}"
-
-            cmd = [
-                "npx",
-                "-y",
-                pkg,
-                "--approval-mode",
-                "yolo",
-                "--model",
-                str(settings.get("local_model") or model),
-                "--prompt",
-                "/code-review",
-            ]
-            self._log(
-                f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
-            try:
-                res = subprocess.run(cmd,
-                                     check=False,
-                                     capture_output=True,
-                                     text=True,
-                                     timeout=600)
-                clean_stdout = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])",
-                                      "", res.stdout)
-                self._log(
-                    f"{'Local' if local else 'Offline'} Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}"
-                )
-                if res.returncode != 0:
-                    print_error(
-                        f"{'Local' if local else 'Offline'} reviewer failed with exit code {res.returncode}.\nSTDERR: {self._mask_token(res.stderr)}\nSTDOUT: {self._mask_token(res.stdout)}"
-                    )
-                if res.stderr:
-                    self._log(
-                        f"{'Local' if local else 'Offline'} Review Warnings/Errors:\n{self._mask_token(res.stderr)}"
-                    )
-
-                local_review_item = {
-                    "type": "local_review" if local else "offline_review",
-                    "user": "gemini-cli-review",
-                    "body": clean_stdout,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }
+            local_review_item = self._run_local_reviewer(
+                pr_number, model, local, offline)
+            if local_review_item and offline:
                 triggered_bots.append("/code-review")
-
-                if offline:
-                    return {
-                        "status":
-                        "success",
-                        "message":
-                        "Offline review completed locally.",
-                        "triggered_bots":
-                        triggered_bots,
-                        "initial_status": {
-                            "status":
-                            "success",
-                            "pr_number":
-                            pr_number,
-                            "checked_at_utc":
-                            datetime.now(timezone.utc).isoformat(),
-                            "new_item_count":
-                            1,
-                            "items": [local_review_item],
-                            "main_reviewer": {
-                                "user": "gemini-cli-review",
-                                "state": "COMMENTED",
-                            },
+                return {
+                    "status":
+                    "success",
+                    "message":
+                    "Offline review completed locally.",
+                    "triggered_bots":
+                    triggered_bots,
+                    "initial_status": {
+                        "status": "success",
+                        "pr_number": pr_number,
+                        "checked_at_utc":
+                        datetime.now(timezone.utc).isoformat(),
+                        "new_item_count": 1,
+                        "items": [local_review_item],
+                        "main_reviewer": {
+                            "user": "gemini-cli-review",
+                            "state": "COMMENTED"
                         },
-                        "next_step":
-                        "Analyze the feedback in 'initial_status.items' and implement fixes. Proceed directly to Step 4 (Analyze & Implement).",
-                    }
-            except subprocess.TimeoutExpired as e:
-                print_error(
-                    f"{'Local' if local else 'Offline'} reviewer timed out after {e.timeout}s."
-                )
-            except FileNotFoundError as e:
-                print_error(
-                    f"{'Local' if local else 'Offline'} reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
-                )
-
+                    },
+                    "next_step":
+                    "Analyze the feedback in 'initial_status.items' and implement fixes. Proceed directly to Step 4 (Analyze & Implement).",
+                }
+            if local_review_item:
+                triggered_bots.append("/code-review")
         else:
-            try:
-                pr = self.repo.get_pull(pr_number)
-                self._log(
-                    f"Triggering reviews on PR #{pr_number} ({pr.title})...")
-                for c in REVIEW_COMMANDS:
-                    pr.create_issue_comment(c)
-                    self._log(f"  Posted: {c}")
-                    triggered_bots.append(c)
-                self._log("All review bots triggered successfully.")
-            except GithubException as e:
-                print_error(f"GitHub API Error: {self._mask_token(str(e))}")
+            if not self._trigger_online_review(pr_number, triggered_bots):
                 return None
 
         # Step 3: Poll for Main Reviewer Response (Enforce Loop Rule)
@@ -743,6 +664,88 @@ class ReviewManager:
                 ),
             }
 
+    def _run_local_reviewer(self, pr_number, model, local, offline):
+        pr_label = f" PR #{pr_number}" if pr_number else " local changes"
+        self._log(
+            f"Triggering {'local' if local else 'offline'} review for{pr_label}..."
+        )
+        settings_path = os.path.join(os.path.dirname(__file__),
+                                     "settings.json")
+        settings = {"gemini_cli_channel": "preview", "local_model": model}
+        try:
+            if os.path.exists(settings_path):
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    settings.update(json.load(f))
+        except (OSError, json.JSONDecodeError) as e:
+            self._log(f"Warning: Failed to load {settings_path}: {e}")
+
+        channel = settings.get("gemini_cli_channel", "preview")
+        pkg = f"@google/gemini-cli@{channel}"
+
+        cmd = [
+            "npx",
+            "-y",
+            pkg,
+            "--approval-mode",
+            "yolo",
+            "--model",
+            str(settings.get("local_model") or model),
+            "--prompt",
+            "/code-review",
+        ]
+        self._log(
+            f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
+        try:
+            res = subprocess.run(cmd,
+                                 check=False,
+                                 capture_output=True,
+                                 text=True,
+                                 timeout=600)
+            clean_stdout = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "",
+                                  res.stdout)
+            self._log(
+                f"{'Local' if local else 'Offline'} Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}"
+            )
+            if res.returncode != 0:
+                print_error(
+                    f"{'Local' if local else 'Offline'} reviewer failed with exit code {res.returncode}.\nSTDERR: {self._mask_token(res.stderr)}\nSTDOUT: {self._mask_token(res.stdout)}"
+                )
+            if res.stderr:
+                self._log(
+                    f"{'Local' if local else 'Offline'} Review Warnings/Errors:\n{self._mask_token(res.stderr)}"
+                )
+
+            return {
+                "type": "local_review" if local else "offline_review",
+                "user": "gemini-cli-review",
+                "body": clean_stdout,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        except subprocess.TimeoutExpired as e:
+            print_error(
+                f"{'Local' if local else 'Offline'} reviewer timed out after {e.timeout}s."
+            )
+        except FileNotFoundError as e:
+            print_error(
+                f"{'Local' if local else 'Offline'} reviewer executable not found. Ensure npx/gemini-cli is installed. Error: {e}"
+            )
+        return None
+
+    def _trigger_online_review(self, pr_number, triggered_bots):
+        try:
+            pr = self.repo.get_pull(pr_number)
+            self._log(f"Triggering reviews on PR #{pr_number} ({pr.title})...")
+            for c in REVIEW_COMMANDS:
+                pr.create_issue_comment(c)
+                self._log(f"  Posted: {c}")
+                triggered_bots.append(c)
+            self._log("All review bots triggered successfully.")
+            return True
+        except GithubException as e:
+            print_error(f"GitHub API Error: {self._mask_token(str(e))}")
+            return False
+
     def check_status(  # skipcq: PY-R1000
         self,
         pr_number,
@@ -834,7 +837,7 @@ class ReviewManager:
                         comment.line,
                         "created_at": (get_aware_utc_datetime(
                             comment.created_at).isoformat()
-                            if comment.created_at else None),
+                                       if comment.created_at else None),
                         "updated_at":
                         comment_dt.isoformat(),
                         "url":
@@ -996,12 +999,14 @@ def main():
     p_trigger.add_argument(
         "--local",
         action="store_true",
-        help="Run in local mode (runs gemini-cli-review, waits 120s for GitHub comments)",
+        help=
+        "Run in local mode (runs gemini-cli-review, waits 120s for GitHub comments)",
     )
     p_trigger.add_argument(
         "--offline",
         action="store_true",
-        help="Run completely offline without pushing to GitHub. Only runs gemini-cli-review locally.",
+        help=
+        "Run completely offline without pushing to GitHub. Only runs gemini-cli-review locally.",
     )
 
     # Status
