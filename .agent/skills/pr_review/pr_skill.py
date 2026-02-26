@@ -902,8 +902,8 @@ class ReviewManager:
             # 2. Review Comments (Inline)
             # Fetch all review comments to ensure we catch edits (since param might only check creation time)
             for comment in pr.get_review_comments():
-                # Use updated_at to catch edits
-                comment_dt = get_aware_utc_datetime(comment.updated_at)
+                # Filter by created_at to avoid falsely flagging edited old comments as new feedback
+                comment_dt = get_aware_utc_datetime(comment.created_at)
                 if comment_dt and comment_dt >= since_dt:
                     new_feedback.append({
                         "type":
@@ -947,7 +947,7 @@ class ReviewManager:
                         })
 
             # Determine next_step based on findings AND validation_reviewer
-            next_step = "Wait for reviews."
+            next_step = "Wait for more reviews. Loop again. Be autonomous, do not stop the cycle prematurely."
             has_changes_requested = any(
                 item.get("state") == "CHANGES_REQUESTED"
                 for item in new_feedback
@@ -1026,11 +1026,11 @@ class ReviewManager:
                             and item.get("state") == "APPROVED")
                 ]
                 if other_feedback:
-                    next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
+                    next_step = f"New feedback received! {ACTION_INSTRUCTIONS} Be autonomous, DO NOT STOP YET: After fixing, use safe_push then loop again."
                 else:
                     next_step = "Validation Complete (STOP LOOP - DO NOT MERGE AUTONOMOUSLY). Notify User. Never merge or delete a branch on your own, if you believe the main reviewer said that the PR is ready, just stop and ask for Human review"
             elif new_feedback:
-                next_step = f"New feedback received. {ACTION_INSTRUCTIONS}"
+                next_step = f"New feedback received! {ACTION_INSTRUCTIONS} Be autonomous, DO NOT STOP YET: After fixing, use safe_push then loop again."
             else:
                 next_step = f"Waiting for approval from {validation_reviewer} (Current: {main_reviewer_state}). Poll again. Be autonomous, don't stop the cycle. You must regularly poll for the main-reviewer's review until it eventually gets posted, then continue."
 
