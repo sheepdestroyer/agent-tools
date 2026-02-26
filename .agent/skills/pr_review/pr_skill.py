@@ -277,7 +277,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
-                check=True,
+                check=False,
             )
             if upstream_proc.returncode != 0:
                 return (
@@ -293,7 +293,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
-                check=True,
+                check=False,
             )
             if rev_list.returncode == 0:
                 try:
@@ -351,7 +351,7 @@ class ReviewManager:
                 capture_output=True,
                 text=True,
                 timeout=GIT_SHORT_TIMEOUT,
-                check=True,
+                check=False,
             )
             if upstream_proc.returncode != 0:
                 return {
@@ -558,7 +558,7 @@ class ReviewManager:
                 f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
             try:
                 res = subprocess.run(cmd,
-                                     check=True,
+                                     check=False,
                                      capture_output=True,
                                      text=True,
                                      timeout=600)
