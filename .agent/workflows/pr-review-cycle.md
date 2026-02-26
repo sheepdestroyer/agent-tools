@@ -17,13 +17,14 @@ Start with a standard "offline" loop. Work completely offline without pushing to
 
 ### Phase 2: Online Review Loop (Normal Mode)
 Once the offline loop completes or reaches 5 iterations, switch to the normal online mode.
-1. **Push Changes**: `git push` your changes to the remote branch. **MANDATORY**: *All test suites must pass before pushing changes.*
-2. **Check Status & CI**: `python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}`
+1. **Offline Fixes**: *Before* pushing, ensure you run `python3 .agent/skills/pr_review/pr_skill.py trigger_review --offline` for a maximum of 2 iterations to catch simple syntax or style issues locally.
+2. **Push Changes**: `git push` your changes to the remote branch. **MANDATORY**: *All test suites must pass before pushing changes.*
+3. **Check Status & CI**: `python3 .agent/skills/pr_review/pr_skill.py status {PR_NUMBER} --since {TIMESTAMP}`
    *(At the same time, fetch and address any non-passing CI checks, e.g., using `gh pr checks`).*
-3. **Trigger Reviews**: `python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}`
+4. **Trigger Reviews**: `python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}`
    *(This triggers GitHub bots and polls for feedback. You must also fetch and address any non-passing CI checks here).*
-4. **Analyze & Implement**: Address the feedback from GitHub bots and fix any failing CI checks.
-5. **Loop**: Return to Step 1 (Push Changes) until "Ready to Merge".
+5. **Analyze & Implement**: Address the feedback from GitHub bots and fix any failing CI checks.
+6. **Loop**: Return to Step 1 (Offline Fixes) until "Ready to Merge".
 
 ### Phase 3: Local Mode Fallback (If Rate Limited)
 If the main reviewer (e.g., `gemini-code-assist[bot]`) states that it is currently **rate limited**, switch to Local Mode for subsequent iterations:
