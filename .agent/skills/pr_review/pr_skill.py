@@ -54,7 +54,7 @@ DEFAULT_VALIDATION_REVIEWER = os.environ.get("PR_REVIEW_VALIDATION_REVIEWER",
 # Common instructional strings for next_step
 ACTION_INSTRUCTIONS = (
     "ANALYZE feedback -> FIX code -> DO NOT PUSH YET. "
-    "Pull and merge latest changes from the remote branch before starting addressing code reviews. "
+    "Pull and merge latest changes from the remote branch before starting to address code reviews. "
     "1. Be sure to fetch, check, and address every comment and code review from all reviewers. "
     "2. Then, fetch and address any non-passing CI checks (e.g., using GitHub MCP tools like `pull_request_read` with method `get_status`, falling back to `gh` CLI if unavailable). "
     "3. Run and fix all available tests and Linting locally. "
@@ -550,9 +550,8 @@ class ReviewManager:
                 "--approval-mode",
                 "yolo",
                 "--model",
-                settings.get("local_model", model),
-                "--prompt",
-                "/code-review",
+                str(settings.get("local_model") or model),
+                "--prompt",                "/code-review",
             ]
             self._log(
                 f"  Running {'local' if local else 'offline'} reviewer: {cmd}")
@@ -567,6 +566,8 @@ class ReviewManager:
                 self._log(
                     f"{'Local' if local else 'Offline'} Review Feedback:\n{clean_stdout[:1000]}{'...' if len(clean_stdout) > 1000 else ''}"
                 )
+                if res.returncode != 0:
+                    print_error(f"{'Local' if local else 'Offline'} reviewer failed with exit code {res.returncode}.\nSTDERR: {self._mask_token(res.stderr)}\nSTDOUT: {self._mask_token(res.stdout)}")
                 if res.stderr:
                     self._log(
                         f"{'Local' if local else 'Offline'} Review Warnings/Errors:\n{self._mask_token(res.stderr)}"
