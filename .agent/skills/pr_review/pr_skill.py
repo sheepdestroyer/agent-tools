@@ -760,10 +760,10 @@ class ReviewManager:
                         "status":
                         "error",
                         "message":
-                        "Status check is not supported in local mode as it requires GitHub API access.",
+                        "Status check is not supported in offline mode as it requires GitHub API access.",
                     }
                 print_error(
-                    "Status check is not supported in local mode as it requires GitHub API access."
+                    "Status check is not supported in offline mode as it requires GitHub API access."
                 )
 
             pr = self.repo.get_pull(pr_number)
