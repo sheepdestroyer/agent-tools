@@ -4,3 +4,8 @@
 *   **Mandate**: Always use **Context7 MCP** (`mcp_context7_*`) when available for retrieving documentation, resolving library IDs, or querying external knowledge.
     *   *Context*: Context7 provides up-to-date documentation and AI-optimized knowledge for libraries and frameworks.
 *   **Priority**: Prefer Context7 over general web search or internal knowledge assumptions for library/framework details.
+
+## 2. CLI Tool Verbosity
+*   **Mandate**: When running verbose CLI linting or analysis tools (like `pylint`), you MUST use quiet or errors-only flags (e.g., `pylint -E` or `pylint --errors-only`) to reduce output volume.
+    *   *Context*: Printing thousands of lines of style warnings into the context window wastes tokens and obscures critical failures.
+*   **Priority**: Prioritize addressing actual errors over stylistic warnings during automated cycles unless specifically requested.
