@@ -20,7 +20,7 @@ Once the offline loop completes or reaches 5 iterations, switch to the normal on
 1. **Push Changes**: `git push` your changes to the remote branch. **MANDATORY**: *All test suites must pass before pushing changes.*
 2. **Trigger Reviews**: `python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER}`
    *(This triggers GitHub bots and polls for feedback).*
-3. **Fetch & Analyze**: Address the feedback from GitHub bots. Immediately afterward, fetch and address any non-passing CI checks (e.g., using `gh pr checks`). **Do not push yet.**
+3. **Fetch & Analyze**: Address the feedback from GitHub bots. Immediately afterward, fetch and address any non-passing CI checks (e.g., using GitHub MCP tools like `pull_request_read` with method `get_status` instead of `gh` CLI). **Do not push yet.**
 4. **Offline Fixes**: *Before* pushing, ensure you run `python3 .agent/skills/pr_review/pr_skill.py trigger_review --offline` for a maximum of 2 iterations to catch simple syntax or style issues locally. Address the feedback.
 5. **Loop**: Return to Step 1 (Push Changes) until "Ready to Merge".
 
@@ -32,7 +32,7 @@ If the main reviewer (e.g., `gemini-code-assist[bot]`) states that it is current
    python3 .agent/skills/pr_review/pr_skill.py trigger_review {PR_NUMBER} --local
    ```
    *In Local Mode, the script replaces the main reviewer with `gemini-cli-review` locally. It avoids triggering remote bots, but still waits (120 seconds) and fetches any independent human/bot comments from GitHub.*
-3. **Fetch & Analyze**: Address the combined local feedback and GitHub feedback. Immediately afterward, fetch and address any non-passing CI checks (e.g., using `gh pr checks`). **Do not push yet.**
+3. **Fetch & Analyze**: Address the combined local feedback and GitHub feedback. Immediately afterward, fetch and address any non-passing CI checks (e.g., using GitHub MCP tools like `pull_request_read` with method `get_status` instead of `gh` CLI). **Do not push yet.**
 4. **Offline Fixes**: *Before* pushing, ensure you run `python3 .agent/skills/pr_review/pr_skill.py trigger_review --offline` for a maximum of 2 iterations to catch simple syntax or style issues locally. Address the feedback.
 5. **Loop**: Return to Step 1 (Push Changes) until "Ready to Merge".
 
