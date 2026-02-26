@@ -83,6 +83,7 @@ class ReviewManager:
         self.local = local
         self.offline = offline
         self.verbose = verbose
+        self.last_keepalive = time.time()
         # Authenticate with GitHub
         self.token = os.environ.get("GITHUB_TOKEN") or os.environ.get(
             "GH_TOKEN")
@@ -126,12 +127,35 @@ class ReviewManager:
         return text.replace(self.token, "********")
 
     def _log(self, message):
-        """Audit logging to stderr with timestamp."""
+        """Audit logging to stderr with timestamp. Always logs to file."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        log_line = f"[{timestamp}] [AUDIT] {message}"
+
+        if hasattr(self, 'log_file_path'):
+            try:
+                with open(self.log_file_path, "a", encoding="utf-8") as f:
+                    f.write(log_line + "\n")
+            except OSError:
+                pass
+
         if not self.verbose:
             return
-        timestamp = datetime.now(timezone.utc).isoformat()
-        # Tag logs as [AUDIT] for compliance and easier filtering
-        print(f"[{timestamp}] [AUDIT] {message}", file=sys.stderr)
+            
+        print(log_line, file=sys.stderr)
+
+    def _sleep_with_keepalive(self, seconds):
+        """Sleeps for given seconds, printing a minimal keepalive every 120s to prevent CI timeouts."""
+        chunk_size = 30
+        elapsed = 0
+        while elapsed < seconds:
+            sleep_time = min(chunk_size, seconds - elapsed)
+            time.sleep(sleep_time)
+            elapsed += sleep_time
+            now = time.time()
+            if now - getattr(self, 'last_keepalive', now) >= 120:
+                print("... [waiting]", file=sys.stderr, flush=True)
+                self._log("Keepalive emitted during wait.")
+                self.last_keepalive = now
 
     def _ensure_workspace(self):
         """Creates agent-workspace directory relative to repo root if possible."""
@@ -153,6 +177,7 @@ class ReviewManager:
             self.workspace = os.path.join(os.getcwd(), "agent-workspace")
 
         os.makedirs(self.workspace, exist_ok=True)
+        self.log_file_path = os.path.join(self.workspace, "pr_skill.log")
 
     def _detect_repo(self):
         """Auto-detects current repository from git remote (local check preferred)."""
@@ -475,7 +500,7 @@ class ReviewManager:
                     self._log(
                         f"Main reviewer has not responded yet. Waiting {poll_interval}s before next poll..."
                     )
-                    time.sleep(poll_interval)
+                    self._sleep_with_keepalive(poll_interval)
             except KeyboardInterrupt:
                 self._log("\nPolling interrupted by user.")
                 # Return distinct status for interruption vs timeout
@@ -581,7 +606,7 @@ class ReviewManager:
                 f"Auto-waiting {wait_time} seconds for independent online human/bot comments..."
             )
             try:
-                time.sleep(wait_time)
+                self._sleep_with_keepalive(wait_time)
             except KeyboardInterrupt:
                 self._log("\nWait interrupted. Checking status immediately...")
 
@@ -642,7 +667,7 @@ class ReviewManager:
                     f"Auto-waiting {wait_seconds} seconds for initial bot responses..."
                 )
                 try:
-                    time.sleep(wait_seconds)
+                    self._sleep_with_keepalive(wait_seconds)
                 except KeyboardInterrupt:
                     self._log(
                         "\nWait interrupted. Checking status immediately...")
