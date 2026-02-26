@@ -601,27 +601,35 @@ class ReviewManager:
 
         # Step 3: Poll for Main Reviewer Response (Enforce Loop Rule)
         if local:
-            wait_time = 120
-            self._log("-" * 40)
-            self._log(
-                f"Auto-waiting {wait_time} seconds for independent online human/bot comments..."
-            )
-            try:
-                self._sleep_with_keepalive(wait_time)
-            except KeyboardInterrupt:
-                self._log("\nWait interrupted. Checking status immediately...")
+            wait_time = wait_seconds if wait_seconds is not None else 120
+            if pr_number:
+                if wait_time > 0:
+                    self._log("-" * 40)
+                    self._log(
+                        f"Auto-waiting {wait_time} seconds for independent online human/bot comments..."
+                    )
+                    try:
+                        self._sleep_with_keepalive(wait_time)
+                    except KeyboardInterrupt:
+                        self._log("\nWait interrupted. Checking status immediately...")
 
-            self._log("-" * 40)
-            self._log("Fetching status from GitHub...")
-            try:
-                status_data = self.check_status(
-                    pr_number,
-                    since_iso=start_time.isoformat(),
-                    return_data=True,
-                    validation_reviewer=validation_reviewer,
-                )
-            except GithubException as e:
-                self._log(f"GitHub polling failed: {self.mask_token(str(e))}")
+                self._log("-" * 40)
+                self._log("Fetching status from GitHub...")
+                try:
+                    status_data = self.check_status(
+                        pr_number,
+                        since_iso=start_time.isoformat(),
+                        return_data=True,
+                        validation_reviewer=validation_reviewer,
+                    )
+                except GithubException as e:
+                    self._log(f"GitHub polling failed: {self.mask_token(str(e))}")
+                    status_data = {
+                        "status": "success",
+                        "items": [],
+                        "next_step": "Analyze feedback and implement fixes.",
+                    }
+            else:
                 status_data = {
                     "status": "success",
                     "items": [],
@@ -645,7 +653,7 @@ class ReviewManager:
                 status_data["next_step"] = (
                     f"New feedback received. {ACTION_INSTRUCTIONS}")
 
-            message = "Triggered local review and fetched online comments."
+            message = "Triggered local review and fetched online comments." if pr_number else "Triggered local review (no PR number; GitHub polling skipped)."
 
             return {
                 "status":
