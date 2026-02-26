@@ -554,8 +554,9 @@ class ReviewManager:
             if not is_safe:
                 error_dict = {
                     "status": "error",
-                    "message": f"FAILED: {msg}\nTip: Use the 'safe_push' tool or the 'git sync-push' alias. Raw 'git push' is prohibited.",
-                    "code": 1
+                    "message":
+                    f"FAILED: {msg}\nTip: Use the 'safe_push' tool or the 'git sync-push' alias. Raw 'git push' is prohibited.",
+                    "code": 1,
                 }
                 print_json(error_dict)
                 sys.exit(1)
