@@ -32,7 +32,7 @@ A Review Cycle is a **LOOP**, not a check.
 *   **Path Safety**: Ensure all file paths passed to tools are validated to be within the project root.
 
 ## 6. Bot Etiquette
-*   **Gemini Code Assist**: Use `/gemini review` for general code review.
+*   **Gemini Code Assist**: Use `@gemini review` for general code review.
 *   **CodeRabbit**: Use `@coderabbitai review` for deep static analysis and logical bugs.
 *   **Sourcery**: Use `@sourcery-ai review` for Pythonic refactoring suggestions.
 *   **Qodo**: Use `/review` for qodo-code-review.
